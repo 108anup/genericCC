@@ -1,4 +1,8 @@
+#ifndef SLOWCONV_HH
+#define SLOWCONV_HH
+
 #include <boost/circular_buffer.hpp>
+#include <sstream>
 #include <fstream>
 #include <map>
 
@@ -10,7 +14,7 @@ typedef int32_t SeqNum;		  // Segments (Segs)
 typedef int32_t SeqNumDelta;  // Segs (cuumulative)
 typedef double SegsRate;	  // Segs per second
 
-class SlowConv : public CCC {
+class SlowConv: public CCC {
 	// TODO: have a separate class for belief based CCA.
 	//  Just keep the update cwnd/rate logic in the derived classes...
    public:
@@ -32,7 +36,7 @@ class SlowConv : public CCC {
 
 		SeqNumDelta interval_segs_lost;
 
-		bool processed = false;
+		bool processed;
 
 		std::string to_string() {
 			std::stringstream ss;
@@ -96,27 +100,27 @@ class SlowConv : public CCC {
 		SeqNum cum_delivered_segs_at_send;
 
 		// On ACK
-		TimeDelta rtt = 0;
-		SeqNumDelta this_loss_count = 0;
-		bool lost = false;
+		TimeDelta rtt;
+		SeqNumDelta this_loss_count;
+		bool lost;
 	};
 
-	static const int HISTORY_SIZE = 32;
-	static const SeqNumDelta MIN_CWND = 5;
-	static const SegsRate INIT_MIN_C = MIN_CWND;  // ~60 Kbps
-	static const SegsRate INIT_MAX_C = 1e5;		  // ~1.2 Gbps
-	static const TimeDelta TIME_DELTA_MAX = 1e5;  // 1e2 seconds
-	static const TimeDelta MS_TO_SECS = 1e3;
-	static const double INTER_HISTORY_TIME = 1;		 // Multiple of min_rtt
-	static const double BELIEFS_TIMEOUT_PERIOD = 12;	 // Multiple of min_rtt
-	static const double JITTER_MULTIPLIER = 1;		 // Multiple of min_rtt
-	static const int MEASUREMENT_INTERVAL_RTPROP = 1;	 // Multiple of min_rtt
-	static const int MEASUREMENT_INTERVAL_HISTORY =
+	static constexpr int HISTORY_SIZE = 32;
+	static constexpr SeqNumDelta MIN_CWND = 5;
+	static constexpr SegsRate INIT_MIN_C = MIN_CWND;  // ~60 Kbps
+	static constexpr SegsRate INIT_MAX_C = 1e5;		  // ~1.2 Gbps
+	static constexpr TimeDelta TIME_DELTA_MAX = 1e5;  // 1e2 seconds
+	static constexpr TimeDelta MS_TO_SECS = 1e3;
+	static constexpr double INTER_HISTORY_TIME = 1;		 // Multiple of min_rtt
+	static constexpr double BELIEFS_TIMEOUT_PERIOD = 12;	 // Multiple of min_rtt
+	static constexpr double JITTER_MULTIPLIER = 1;		 // Multiple of min_rtt
+	static constexpr int MEASUREMENT_INTERVAL_RTPROP = 1;	 // Multiple of min_rtt
+	static constexpr int MEASUREMENT_INTERVAL_HISTORY =
 		MEASUREMENT_INTERVAL_RTPROP / INTER_HISTORY_TIME;	// Multiple of history
-	static const double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
-	static const double TIMEOUT_THRESH = 1.5;
-    static const int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
-	static constexpr char* LOG_TYPE_TO_STR[] = {"ERROR", "INFO", "DEBUG"};
+	static constexpr double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
+	static constexpr double TIMEOUT_THRESH = 1.5;
+    static constexpr int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
+	std::string LOG_TYPE_TO_STR[3];
 
    protected:
 	Time cur_tick;
@@ -144,22 +148,24 @@ class SlowConv : public CCC {
 
 	Time current_timestamp() { return cur_tick; }
 	SegsRate get_min_sending_rate();
-	void update_beliefs_minc_maxc(Time now, SegmentData);
-	void update_beliefs_minc_lambda(Time now, SegmentData);
+	void update_beliefs_minc_maxc(Time, SegmentData __attribute((unused)));
+	void update_beliefs_minc_lambda(Time __attribute((unused)), SegmentData);
 	void update_beliefs(Time, SegmentData, bool, TimeDelta);
 	void update_history(Time, SegmentData);
 	void update_rate_cwnd(Time);
-	void update_rate_cwnd_fast_conv(Time);
-	void update_rate_cwnd_slow_conv(Time);
+	void update_rate_cwnd_fast_conv(Time __attribute((unused)));
+	void update_rate_cwnd_slow_conv(Time __attribute((unused)));
 	void log(LogLevel, std::string);
 	void log_state(Time);
 	void log_beliefs(Time);
-	void log_history(Time);
+	void log_history(Time __attribute((unused)));
 	SeqNumDelta count_loss(SeqNum seq);
 
    public:
-	SlowConv(std::string logfilepath = std::string())
-		: cur_tick(0),
+	SlowConv(std::string logfilepath = "")
+		:
+		  LOG_TYPE_TO_STR({"ERROR", "INFO", "DEBUG"}),
+		  cur_tick(0),
 		  genericcc_min_rtt(0),
 		  genericcc_rate_measurement(0),
 		  last_timeout_time(0),
@@ -174,19 +180,21 @@ class SlowConv : public CCC {
 		  cum_segs_lost(0),
 		  sending_rate(INIT_MIN_C),
 		  cwnd(MIN_CWND),
+		  logfilepath(logfilepath),
 		  logfile()
 	{
 		if (!logfilepath.empty()) {
-			this->logfilepath = logfilepath;
 			logfile.open(logfilepath);
 		}
 	}
 
-	~SlowConv() { logfile.close(); }
+	~SlowConv() {
+		if (logfile.is_open()) logfile.close();
+	}
 
 	virtual void init() override;
-	virtual void onACK(SeqNum ack, Time receiver_timestamp,
-					   Time sender_timestamp) override;
+	virtual void onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
+					   Time sender_timestamp __attribute((unused))) override;
 	virtual void onPktSent(SeqNum seq_num) override;
 	virtual void onTimeout() override { std::cerr << "Ack timed out!\n"; }
 	virtual void onLinkRateMeasurement(double s_measured_link_rate) override {
@@ -195,3 +203,5 @@ class SlowConv : public CCC {
 	void set_timestamp(Time s_cur_tick) { cur_tick = s_cur_tick; }
 	void set_min_rtt(Time s_min_rtt) { genericcc_min_rtt = s_min_rtt; }
 };
+
+#endif

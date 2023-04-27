@@ -1,11 +1,6 @@
 #include "slow_conv.hh"
 #include <sstream>
 
-void SlowConv::init() {
-	_intersend_time = 0;
-	_the_window = 2;
-}
-
 SeqNumDelta SlowConv::count_loss(SeqNum seq) {
 	SeqNumDelta segs_lost = 0;
 	for (auto it = unacknowledged_segs.begin(); it != unacknowledged_segs.end();
@@ -18,8 +13,8 @@ SeqNumDelta SlowConv::count_loss(SeqNum seq) {
 	return segs_lost;
 }
 
-void SlowConv::onACK(SeqNum ack, Time receiver_timestamp,
-					 Time sender_timestamp) {
+void SlowConv::onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
+					 Time sender_timestamp __attribute((unused))) {
 	SeqNum seq = ack - 1;
 
 	if (unacknowledged_segs.count(seq) == 0) {
@@ -32,7 +27,7 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp,
 	}
 	assert(unacknowledged_segs.count(seq) == 1);
 
-	SegmentData seg = unacknowledged_segs[seq];
+	SegmentData& seg = unacknowledged_segs[seq];
 	Time sent_time = seg.send_tstamp;
 	unacknowledged_segs.erase(seq);
 	if(seg.lost) {
@@ -56,18 +51,17 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp,
 void SlowConv::onPktSent(SeqNum seq) {
 	Time now = current_timestamp();
 	// TODO: consider using multimap, as this will overwrite existing entry.
-	if(unacknowledged_segs.count(seq) != 0) {
+	if (unacknowledged_segs.count(seq) != 0) {
 		log(LogLevel::ERROR, "Dupsent!! " + std::to_string(seq));
-	}
-	else {
-		unacknowledged_segs[seq] = SegmentData({now, cum_segs_delivered});
+	} else {
+		unacknowledged_segs[seq] = {now, cum_segs_delivered, 0, 0, false};
 		cum_segs_sent++;
 	}
 	// TODO: Separately maintain sending history.
 	update_rate_cwnd(now);
 }
 
-void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
+void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg __attribute((unused))) {
 	if (history.size() <= 1) {
 		return;
 	}
@@ -84,10 +78,12 @@ void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
 	SegsRate fresh_maxc = INIT_MAX_C;
 
 	const History &et = history.back();
-	size_t past = 0;
-	for (size_t hid = history.size() - 1 - 1; hid >= 0; hid--) {
-		past++;
-		const History &st = history[hid];
+	size_t depth = 0;
+	auto hit = history.rbegin();
+	hit--;
+	for (; hit != history.rend(); hit--) {
+		depth++;
+		const History &st = *hit;
 
 		this_high_delay = st.interval_min_rtt > rtprop + jitter;
 		this_loss = st.interval_segs_lost > 0;
@@ -100,7 +96,7 @@ void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
 
 		fresh_minc = std::max(fresh_minc, (this_delivered_segs * MS_TO_SECS) /
 										  (this_time_window + jitter));
-		if(cum_utilized && past > 1) {
+		if(cum_utilized && depth > 1) {
 			fresh_maxc = std::min(fresh_maxc, (this_delivered_segs * MS_TO_SECS) /
 										  (this_time_window - jitter));
 		}
@@ -165,7 +161,7 @@ SegsRate SlowConv::get_min_sending_rate() {
 	return (MIN_CWND * MS_TO_SECS) / beliefs.min_rtt;
 }
 
-void SlowConv::update_beliefs_minc_lambda(Time now, SegmentData seg) {
+void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), SegmentData seg) {
 	if (history.size() <= 1) {
 		return;
 	}
@@ -188,18 +184,22 @@ void SlowConv::update_beliefs_minc_lambda(Time now, SegmentData seg) {
 	// latest.creation_cum_delivered_segs_at_send;
 
 	SegsRate new_minc_lambda = INIT_MIN_C;
-	size_t past = 0;
+	size_t depth = 0;
 	// TODO: can start from history.size()-1.
-	for (size_t hid = history.size() - 1 - 1; hid >= 0; hid--) {
-		past++;
-		History &st = history[hid];
+	auto hit = history.rbegin();
+	hit--;
+	int hid = history.size()-1;
+	for (; hit != history.rend(); hit--) {
+		hid--;
+		depth++;
+		History &st = *hit;
 
 		this_high_delay = st.interval_max_rtt > rtprop + jitter;
 		this_loss = st.interval_segs_lost > 0;
 		this_underutilized = !this_high_delay && !this_loss;
 		cum_underutilized = cum_underutilized && this_underutilized;
 
-		if (past < MEASUREMENT_INTERVAL_HISTORY) continue;
+		if (depth < MEASUREMENT_INTERVAL_HISTORY) continue;
 
 		const History &et = history[hid + MEASUREMENT_INTERVAL_HISTORY];
 
@@ -248,10 +248,16 @@ void SlowConv::update_history(Time now, SegmentData seg) {
 	TimeDelta time_since_last_update = now - last_history_update_time;
 	if (time_since_last_update >= inter_history_time) {
 		last_history_update_time = now;
-		History h =
-			History({now, seg.rtt, seg.rtt, cum_segs_sent, cum_segs_delivered,
-					 cum_segs_lost, sending_rate,
-					 seg.cum_delivered_segs_at_send, seg.this_loss_count});
+		History h = {now,
+					 seg.rtt,
+					 seg.rtt,
+					 cum_segs_sent,
+					 cum_segs_delivered,
+					 cum_segs_lost,
+					 sending_rate,
+					 seg.cum_delivered_segs_at_send,
+					 seg.this_loss_count,
+					 false};
 		history.push_back(h);
 		update_beliefs(now, seg, true, time_since_last_update);
 	} else {
@@ -287,7 +293,7 @@ void SlowConv::update_rate_cwnd(Time now) {
 	}
 }
 
-void SlowConv::update_rate_cwnd_slow_conv(Time now) {
+void SlowConv::update_rate_cwnd_slow_conv(Time now __attribute((unused))) {
 	TimeDelta rtprop = beliefs.min_rtt;
 	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
 
@@ -305,7 +311,7 @@ void SlowConv::update_rate_cwnd_slow_conv(Time now) {
 	_the_window = cwnd;
 }
 
-void SlowConv::update_rate_cwnd_fast_conv(Time now) {
+void SlowConv::update_rate_cwnd_fast_conv(Time now __attribute((unused))) {
 	TimeDelta rtprop = beliefs.min_rtt;
 	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
 
@@ -347,7 +353,7 @@ void SlowConv::log_beliefs(Time now) {
 	log(LogLevel::INFO, ss.str());
 }
 
-void SlowConv::log_history(Time now) {
+void SlowConv::log_history(Time now __attribute((unused))) {
 	for (auto h = history.rbegin(); h != history.rend(); ++h) {
 		// std::stringstream ss;
 		// ss << "time " << now;
@@ -375,6 +381,7 @@ void SlowConv::init() {
 	cum_segs_lost = 0;
 	sending_rate = INIT_MIN_C;
 	cwnd = MIN_CWND;
+
 	_intersend_time = MS_TO_SECS / sending_rate;
 	_the_window = cwnd;
 }

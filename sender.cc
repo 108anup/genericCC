@@ -7,6 +7,7 @@
 #include "kernelTCP.hh"
 #include "markoviancc.hh"
 #include "traffic-generator.hh"
+#include "slow_conv.hh"
 
 // see configs.hh for details
 double TRAINING_LINK_RATE = 4000000.0/1500.0;
@@ -25,6 +26,7 @@ int main( int argc, char *argv[] ) {
 	string traffic_params = "";
 	// for MarkovianCC
 	string delta_conf = "";
+	string logfilepath = "";
 	// length of packet train for estimating bottleneck bandwidth
 	int train_length = 1;
 
@@ -158,9 +160,9 @@ int main( int argc, char *argv[] ) {
 	}
 	else if (cctype == CCType::SLOW_CONV) {
 		fprintf(stdout, "Using SlowConv.\n");
-		SlowConvCC congctrl;
-		CTCP< SlowConvCC > connection( congctrl, serverip, serverport, sourceport, train_length );
-		TrafficGenerator< CTCP< SlowConvCC > > traffic_generator( connection, onduration, offduration, traffic_params );
+		SlowConv congctrl(logfilepath);
+		CTCP< SlowConv > connection( congctrl, serverip, serverport, sourceport, train_length );
+		TrafficGenerator< CTCP< SlowConv > > traffic_generator( connection, onduration, offduration, traffic_params );
 		traffic_generator.spawn_senders( 1 );
 	}
 	else{
