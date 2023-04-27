@@ -17,14 +17,18 @@ class SlowConv : public CCC {
         TimeDelta interval_min_rtt;
 		TimeDelta interval_max_rtt;
 
-		SeqNum creation_sent_segs;
-        SeqNum creation_delivered_segs;
-		SeqNum creation_lost_segs;
+		SeqNum creation_cum_sent_segs;
+        SeqNum creation_cum_delivered_segs;
+		SeqNum creation_cum_lost_segs;
 
 		SegsRate creation_sending_rate;
 
         // What was delivered when the packet corresponding to this ACK was sent.
 		SeqNum creation_cum_segs_delivered_at_send;
+
+		SeqNumDelta interval_segs_lost;
+
+		bool processed = false;
 	};
 
 	struct Beliefs {
@@ -47,8 +51,13 @@ class SlowConv : public CCC {
 	};
 
 	struct SegmentData {
-		Time send_tstamp;
+		// On send
+        Time send_tstamp;
 		SeqNum cum_segs_delivered_at_send;
+
+        // On ACK
+		TimeDelta rtt;
+		SeqNumDelta this_loss_count;
 	};
 
 	static const int HISTORY_SIZE = 32;
@@ -59,6 +68,9 @@ class SlowConv : public CCC {
 	static const double INTER_HISTORY_TIME = 1;	 // Multiple of min_rtt
     static const double BELIEFS_TIMEOUT_PERIOD = 1;  // Multiple of min_rtt
     static const double JITTER_MULTIPLIER = 1; // Multiple of min_rtt
+    static const int MEASUREMENT_INTERVAL_RTT = 1;  // Multiple of min_rtt
+	static const int MEASUREMENT_INTERVAL_HISTORY =
+		MEASUREMENT_INTERVAL_RTT / INTER_HISTORY_TIME;  // Multiple of history
 
    protected:
 	Time cur_tick;
