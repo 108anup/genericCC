@@ -244,6 +244,8 @@ void SlowConv::update_beliefs(Time now, SegmentData seg, bool updated_history,
 			beliefs.min_c_lambda * time_since_last_update;
 		beliefs.bq_belief2 =
 			beliefs.bq_belief2 + estimated_sent - estimated_delivered;
+		beliefs.bq_belief2 = std::max((SeqNumDelta)0, beliefs.bq_belief2);
+		beliefs.bq_belief2 = std::min(beliefs.bq_belief2, beliefs.bq_belief1);
 		beliefs.last_segs_sent = cum_segs_sent;
 
 		update_beliefs_minc_maxc(now, seg);
@@ -285,17 +287,14 @@ void SlowConv::update_rate_cwnd(Time now) {
 
 		if(state == State::SLOW_START) {
 			update_rate_cwnd_fast_conv(now);
-			return;
 		}
 		else if (state == State::CONG_AVOID) {
 			update_rate_cwnd_slow_conv(now);
-			return;
 		}
 		else {
 			log(LogLevel::ERROR,
 				"State not implemented: " + std::to_string(state));
 			// assert(false);
-			return;
 		}
 		log_state(now);
 		log_beliefs(now);
@@ -340,7 +339,10 @@ void SlowConv::update_rate_cwnd_fast_conv(Time now __attribute((unused))) {
 
 void SlowConv::log(LogLevel l, std::string msg) {
 	if (logfile.is_open()) {
+		// std::cout << "Logging";
 		logfile << LOG_TYPE_TO_STR[l] << " " << msg << std::endl;
+	} else {
+		// std::cout << "Log file closed.";
 	}
 }
 
