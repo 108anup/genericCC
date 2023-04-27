@@ -8,6 +8,7 @@
 #include "markoviancc.hh"
 #include "traffic-generator.hh"
 #include "slow_conv.hh"
+#include "fast_conv.hh"
 
 // see configs.hh for details
 double TRAINING_LINK_RATE = 4000000.0/1500.0;
@@ -30,7 +31,7 @@ int main( int argc, char *argv[] ) {
 	// length of packet train for estimating bottleneck bandwidth
 	int train_length = 1;
 
-	enum CCType { REMYCC, TCPCC, KERNELCC, PCC, NASHCC, MARKOVIANCC, SLOW_CONV} cctype = REMYCC;
+	enum CCType { REMYCC, TCPCC, KERNELCC, PCC, NASHCC, MARKOVIANCC, SLOW_CONV, FAST_CONV} cctype = REMYCC;
 
 	for ( int i = 1; i < argc; i++ ) {
 		std::string arg( argv[ i ] );
@@ -101,6 +102,8 @@ int main( int argc, char *argv[] ) {
 				cctype = CCType::MARKOVIANCC;
 			else if (cctype_str == "slow_conv")
 				cctype = CCType::SLOW_CONV;
+			else if (cctype_str == "fast_conv")
+				cctype = CCType::FAST_CONV;
 			else
 				fprintf( stderr, "Unrecognised congestion control protocol '%s'.\n", cctype_str.c_str() );
 		}
@@ -165,6 +168,13 @@ int main( int argc, char *argv[] ) {
 		SlowConv congctrl(logfilepath);
 		CTCP< SlowConv > connection( congctrl, serverip, serverport, sourceport, train_length );
 		TrafficGenerator< CTCP< SlowConv > > traffic_generator( connection, onduration, offduration, traffic_params );
+		traffic_generator.spawn_senders( 1 );
+	}
+	else if (cctype == CCType::FAST_CONV) {
+		fprintf(stdout, "Using FastConv.\n");
+		FastConv congctrl(logfilepath);
+		CTCP< FastConv > connection( congctrl, serverip, serverport, sourceport, train_length );
+		TrafficGenerator< CTCP< FastConv > > traffic_generator( connection, onduration, offduration, traffic_params );
 		traffic_generator.spawn_senders( 1 );
 	}
 	else{

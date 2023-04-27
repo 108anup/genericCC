@@ -45,6 +45,7 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
 	cum_segs_delivered++;
 	cum_segs_lost+=segs_lost;
 
+	update_state(now, seg);
 	update_history(now, seg);  // this calls update beliefs
 	update_rate_cwnd(now);
 }
@@ -348,7 +349,7 @@ void SlowConv::log(LogLevel l, std::string msg) {
 
 void SlowConv::log_state(Time now) {
 	std::stringstream ss;
-	ss << "time " << now << " cwnd " << cwnd << " sending_rate " << sending_rate
+	ss << "new " << "time " << now << " cwnd " << cwnd << " sending_rate " << sending_rate
 	   << " state " << state;
 	ss << " cum_segs_sent " << cum_segs_sent << " cum_segs_delivered "
 	   << cum_segs_delivered << " cum_segs_lost " << cum_segs_lost;
@@ -396,4 +397,11 @@ void SlowConv::init() {
 
 	_intersend_time = MS_TO_SECS / sending_rate;
 	_the_window = cwnd;
+}
+
+void SlowConv::update_state(Time now __attribute((unused)), SegmentData seg) {
+	// std::cout << "update_state" << std::endl;
+	if (seg.this_loss_count > 2 * MIN_CWND) {
+		state = State::CONG_AVOID;
+	}
 }

@@ -6,7 +6,7 @@ INCLUDES :=	-I./protobufs-default -I./udt
 
 LIBS     := -ljemalloc -lm -pthread -lprotobuf -lpthread -ljemalloc
 #$(MEMORY_STYLE)/libremyprotos.a
-OBJECTS  := random.o memory.o memoryrange.o rat.o whisker.o whiskertree.o udp-socket.o traffic-generator.o remycc.o markoviancc.o estimators.o rtt-window.o slow_conv.o #protobufs-default/dna.pb.o
+OBJECTS  := random.o memory.o memoryrange.o rat.o whisker.o whiskertree.o udp-socket.o traffic-generator.o remycc.o markoviancc.o estimators.o rtt-window.o slow_conv.o fast_conv.o #protobufs-default/dna.pb.o
 
 all: sender receiver
 

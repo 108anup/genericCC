@@ -155,6 +155,7 @@ class SlowConv: public CCC {
 	void update_rate_cwnd(Time);
 	void update_rate_cwnd_fast_conv(Time __attribute((unused)));
 	void update_rate_cwnd_slow_conv(Time __attribute((unused)));
+	virtual void update_state(Time __attribute((unused)), SegmentData);
 	void log(LogLevel, std::string);
 	void log_state(Time);
 	void log_beliefs(Time);
