@@ -177,15 +177,15 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), Segmen
 	TimeDelta rtprop = beliefs.min_rtt;
 	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
 
-	bool this_high_delay;
+	bool this_low_delay;
 	bool this_loss;
 	bool this_underutilized;
 	bool cum_underutilized;
 
 	const History &latest = history.back();
-	this_high_delay = latest.interval_max_rtt > rtprop + jitter;
+	this_low_delay = latest.interval_max_rtt <= rtprop - jitter;
 	this_loss = latest.interval_segs_lost > 0;
-	this_underutilized = !this_high_delay && !this_loss;
+	this_underutilized = !this_low_delay && !this_loss;
 	cum_underutilized = this_underutilized;
 
 	SeqNum delivered_1rtt_ago = seg.cum_delivered_segs_at_send;
@@ -202,9 +202,9 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), Segmen
 		depth++;
 		History &st = *hit;
 
-		this_high_delay = st.interval_max_rtt > rtprop + jitter;
+		this_low_delay = st.interval_max_rtt <= rtprop - jitter;
 		this_loss = st.interval_segs_lost > 0;
-		this_underutilized = !this_high_delay && !this_loss;
+		this_underutilized = this_low_delay && !this_loss;
 		cum_underutilized = cum_underutilized && this_underutilized;
 
 		if (depth < MEASUREMENT_INTERVAL_HISTORY) continue;
@@ -276,6 +276,7 @@ void SlowConv::update_history(Time now, SegmentData seg) {
 		History &latest = history.back();
 		latest.interval_max_rtt = std::max(latest.interval_max_rtt, seg.rtt);
 		latest.interval_min_rtt = std::min(latest.interval_min_rtt, seg.rtt);
+		latest.interval_segs_lost += seg.this_loss_count;
 		update_beliefs(now, seg, false, time_since_last_update);
 	}
 }
@@ -367,11 +368,19 @@ void SlowConv::log_beliefs(Time now) {
 }
 
 void SlowConv::log_history(Time now __attribute((unused))) {
+	// History &next = history.back();
+	TimeDelta rtprop = beliefs.min_rtt;
+	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
 	for (auto h = history.rbegin(); h != history.rend(); ++h) {
-		// std::stringstream ss;
-		// ss << "time " << now;
-		// ss << h.to_string();
-		log(LogLevel::DEBUG, h->to_string());
+		bool high_delay = h->interval_min_rtt > (rtprop + jitter);
+		bool loss = h->interval_segs_lost > 0;
+		bool utilized = high_delay || loss;
+		bool low_delay = h->interval_max_rtt <= (rtprop + jitter);
+		bool underutilized = low_delay && !loss;
+		std::stringstream ss;
+		ss << h->to_string();
+		ss << "utilized " << utilized << " underutilized " << underutilized;
+		log(LogLevel::DEBUG, ss.str());
 	}
 }
 
