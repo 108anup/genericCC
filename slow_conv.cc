@@ -1,4 +1,5 @@
 #include "slow_conv.hh"
+#include <sstream>
 
 void SlowConv::init() {
 	_intersend_time = 0;
@@ -9,8 +10,9 @@ SeqNumDelta SlowConv::count_loss(SeqNum seq) {
 	SeqNumDelta segs_lost = 0;
 	for (auto it = unacknowledged_segs.begin(); it != unacknowledged_segs.end();
 		 it++) {
-		if (it->first < seq) {
+		if (it->first < seq && !it->second.lost) {
 			segs_lost++;
+			it->second.lost = true;
 		}
 	}
 	return segs_lost;
@@ -21,11 +23,11 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp,
 	SeqNum seq = ack - 1;
 
 	if (unacknowledged_segs.count(seq) == 0) {
-		std::cerr << "Unknown Ack!! " << seq << std::endl;
+		log(LogLevel::ERROR, "Unknown Ack!! " + std::to_string(seq));
 		return;
 	}
 	if (unacknowledged_segs.count(seq) > 1) {
-		std::cerr << "Dupsent!! " << seq << std::endl;
+		log(LogLevel::ERROR, "Dupsent!! " + std::to_string(seq));
 		return;
 	}
 	assert(unacknowledged_segs.count(seq) == 1);
@@ -33,23 +35,35 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp,
 	SegmentData seg = unacknowledged_segs[seq];
 	Time sent_time = seg.send_tstamp;
 	unacknowledged_segs.erase(seq);
+	if(seg.lost) {
+		log(LogLevel::ERROR, "ACK for lost pkt. There is pkt reordering " + std::to_string(seq));
+		cum_segs_lost--;
+	}
 
 	SeqNumDelta segs_lost = count_loss(seq);
 	seg.this_loss_count = segs_lost;
 
 	Time now = current_timestamp();
-	seg.rtt = now - sent_time;
+	seg.rtt = std::max((TimeDelta)0, now - sent_time);
 
-	cum_segs_lost++;
 	cum_segs_delivered++;
+	cum_segs_lost+=segs_lost;
 
 	update_history(now, seg);  // this calls update beliefs
 	update_rate_cwnd(now);
 }
 
-void SlowConv::onPktSent(SeqNum seq_num) {
-	cum_segs_sent++;
+void SlowConv::onPktSent(SeqNum seq) {
 	Time now = current_timestamp();
+	// TODO: consider using multimap, as this will overwrite existing entry.
+	if(unacknowledged_segs.count(seq) != 0) {
+		log(LogLevel::ERROR, "Dupsent!! " + std::to_string(seq));
+	}
+	else {
+		unacknowledged_segs[seq] = SegmentData({now, cum_segs_delivered});
+		cum_segs_sent++;
+	}
+	// TODO: Separately maintain sending history.
 	update_rate_cwnd(now);
 }
 
@@ -249,24 +263,118 @@ void SlowConv::update_history(Time now, SegmentData seg) {
 }
 
 void SlowConv::update_rate_cwnd(Time now) {
-	TimeDelta rtprop = beliefs.min_rtt;
-	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
-
 	TimeDelta time_since_last_rate_update = now - last_rate_update_time;
 	if (time_since_last_rate_update >= INTER_RATE_UPDATE_TIME * beliefs.min_rtt) {
 		last_rate_update_time = now;
 
-		SegsRate min_sending_rate = get_min_sending_rate();
-		if(beliefs.bq_belief1 > 2 * MIN_CWND) {
-			sending_rate = min_sending_rate;
-		} else {
-			sending_rate =
-				(rtprop + jitter) * beliefs.min_c_lambda + min_sending_rate;
+		if(state == State::SLOW_START) {
+			update_rate_cwnd_fast_conv(now);
+			return;
 		}
-		sending_rate = std::max(sending_rate, min_sending_rate);
-		cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
-
-		_intersend_time = MS_TO_SECS / sending_rate;
-		_the_window = cwnd;
+		else if (state == State::CONG_AVOID) {
+			update_rate_cwnd_slow_conv(now);
+			return;
+		}
+		else {
+			log(LogLevel::ERROR,
+				"State not implemented: " + std::to_string(state));
+			// assert(false);
+			return;
+		}
+		log_state(now);
+		log_beliefs(now);
+		log_history(now);
 	}
+}
+
+void SlowConv::update_rate_cwnd_slow_conv(Time now) {
+	TimeDelta rtprop = beliefs.min_rtt;
+	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
+
+	SegsRate min_sending_rate = get_min_sending_rate();
+	if(beliefs.bq_belief1 > 2 * MIN_CWND) {
+		sending_rate = min_sending_rate;
+	} else {
+		sending_rate =
+			(1 + JITTER_MULTIPLIER) * beliefs.min_c_lambda + min_sending_rate;
+	}
+	sending_rate = std::max(sending_rate, min_sending_rate);
+	cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
+
+	_intersend_time = MS_TO_SECS / sending_rate;
+	_the_window = cwnd;
+}
+
+void SlowConv::update_rate_cwnd_fast_conv(Time now) {
+	TimeDelta rtprop = beliefs.min_rtt;
+	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
+
+	SegsRate min_sending_rate = get_min_sending_rate();
+	if(beliefs.min_qdel > 0) {
+		sending_rate = beliefs.min_c / 2;
+	} else {
+		sending_rate = (1 + JITTER_MULTIPLIER) * beliefs.min_c;
+	}
+	sending_rate = std::max(sending_rate, min_sending_rate);
+	cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
+
+	_intersend_time = MS_TO_SECS / sending_rate;
+	_the_window = cwnd;
+}
+
+void SlowConv::log(LogLevel l, std::string msg) {
+	if (logfile.is_open()) {
+		logfile << LOG_TYPE_TO_STR[l] << " " << msg << std::endl;
+	}
+}
+
+void SlowConv::log_state(Time now) {
+	std::stringstream ss;
+	ss << "time " << now << " cwnd " << cwnd << " sending_rate " << sending_rate
+	   << " state " << state;
+	ss << " cum_segs_sent " << cum_segs_sent << " cum_segs_delivered "
+	   << cum_segs_delivered << " cum_segs_lost " << cum_segs_lost;
+	log(LogLevel::INFO, ss.str());
+}
+
+void SlowConv::log_beliefs(Time now) {
+	std::stringstream ss;
+	ss << "time " << now << " min_rtt " << beliefs.min_rtt << " min_qdel "
+	   << beliefs.min_qdel << " min_c " << beliefs.min_c << " max_c "
+	   << beliefs.max_c;
+	ss << " min_c_lambda " << beliefs.min_c_lambda << " bq_belief1 "
+	   << beliefs.bq_belief1 << " bq_belief2 " << beliefs.bq_belief2;
+	log(LogLevel::INFO, ss.str());
+}
+
+void SlowConv::log_history(Time now) {
+	for (auto h = history.rbegin(); h != history.rend(); ++h) {
+		// std::stringstream ss;
+		// ss << "time " << now;
+		// ss << h.to_string();
+		log(LogLevel::DEBUG, h->to_string());
+	}
+}
+
+void SlowConv::init() {
+	// Time now = current_timestamp();
+	genericcc_min_rtt = 0;
+	genericcc_rate_measurement = 0;
+
+	last_timeout_time = 0;
+	last_rate_update_time = 0;
+	last_history_update_time = 0;
+	state = State::SLOW_START;
+
+	unacknowledged_segs.clear();
+	history.clear();
+	beliefs = Beliefs();
+
+	cum_segs_sent = 0;
+	cum_segs_delivered = 0;
+	cum_segs_lost = 0;
+	sending_rate = INIT_MIN_C;
+	cwnd = MIN_CWND;
+	_intersend_time = MS_TO_SECS / sending_rate;
+	_the_window = cwnd;
 }

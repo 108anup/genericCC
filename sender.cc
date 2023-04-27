@@ -28,7 +28,7 @@ int main( int argc, char *argv[] ) {
 	// length of packet train for estimating bottleneck bandwidth
 	int train_length = 1;
 
-	enum CCType { REMYCC, TCPCC, KERNELCC, PCC, NASHCC, MARKOVIANCC } cctype = REMYCC;
+	enum CCType { REMYCC, TCPCC, KERNELCC, PCC, NASHCC, MARKOVIANCC, SLOW_CONV} cctype = REMYCC;
 
 	for ( int i = 1; i < argc; i++ ) {
 		std::string arg( argv[ i ] );
@@ -95,6 +95,8 @@ int main( int argc, char *argv[] ) {
 				cctype = CCType::NASHCC;
 			else if (cctype_str == "markovian")
 				cctype = CCType::MARKOVIANCC;
+			else if (cctype_str == "slow_conv")
+				cctype = CCType::SLOW_CONV;
 			else
 				fprintf( stderr, "Unrecognised congestion control protocol '%s'.\n", cctype_str.c_str() );
 		}
@@ -152,6 +154,13 @@ int main( int argc, char *argv[] ) {
 		congctrl.interpret_config_str(delta_conf);
 		CTCP< MarkovianCC > connection( congctrl, serverip, serverport, sourceport, train_length );
 		TrafficGenerator< CTCP< MarkovianCC > > traffic_generator( connection, onduration, offduration, traffic_params );
+		traffic_generator.spawn_senders( 1 );
+	}
+	else if (cctype == CCType::SLOW_CONV) {
+		fprintf(stdout, "Using SlowConv.\n");
+		SlowConvCC congctrl;
+		CTCP< SlowConvCC > connection( congctrl, serverip, serverport, sourceport, train_length );
+		TrafficGenerator< CTCP< SlowConvCC > > traffic_generator( connection, onduration, offduration, traffic_params );
 		traffic_generator.spawn_senders( 1 );
 	}
 	else{

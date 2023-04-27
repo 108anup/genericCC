@@ -1,5 +1,6 @@
 #include <boost/circular_buffer.hpp>
-#include <unordered_map>
+#include <fstream>
+#include <map>
 
 #include "ccc.hh"
 
@@ -10,6 +11,8 @@ typedef int32_t SeqNumDelta;  // Segs (cuumulative)
 typedef double SegsRate;	  // Segs per second
 
 class SlowConv : public CCC {
+	// TODO: have a separate class for belief based CCA.
+	//  Just keep the update cwnd/rate logic in the derived classes...
    public:
 	struct History {
 		Time creation_tstamp;
@@ -30,6 +33,20 @@ class SlowConv : public CCC {
 		SeqNumDelta interval_segs_lost;
 
 		bool processed = false;
+
+		std::string to_string() {
+			std::stringstream ss;
+			ss << "creation_tstamp " << creation_tstamp << " interval_min_rtt "
+			   << interval_min_rtt << " interval_max_rtt " << interval_max_rtt
+			   << " creation_cum_sent_segs " << creation_cum_sent_segs
+			   << " creation_cum_delivered_segs " << creation_cum_delivered_segs
+			   << " creation_cum_lost_segs " << creation_cum_lost_segs
+			   << " creation_sending_rate " << creation_sending_rate
+			   << " creation_cum_delivered_segs_at_send "
+			   << creation_cum_delivered_segs_at_send << " interval_segs_lost "
+			   << interval_segs_lost << " processed " << processed;
+			return ss.str();
+		}
 	};
 
 	struct Beliefs {
@@ -52,9 +69,26 @@ class SlowConv : public CCC {
 
 		SegsRate last_timeout_minc;
         SegsRate last_timeout_maxc;
+
+		Beliefs()
+			: min_rtt(TIME_DELTA_MAX),
+			  min_qdel(TIME_DELTA_MAX),
+			  bq_belief1(0),
+			  min_c_lambda(INIT_MIN_C),
+			  last_min_c_lambda(INIT_MIN_C),
+			  bq_belief2(0),
+			  last_segs_sent(0),
+			  min_c(INIT_MIN_C),
+			  max_c(INIT_MAX_C),
+			  minc_since_last_timeout(INIT_MIN_C),
+			  maxc_since_last_timeout(INIT_MAX_C),
+			  last_timeout_minc(INIT_MIN_C),
+			  last_timeout_maxc(INIT_MAX_C) {}
 	};
 
-	enum State { SLOW_START, PROBE, DRAIN };
+	enum State { SLOW_START, CONG_AVOID, PROBE, DRAIN };
+
+	enum LogLevel { ERROR, INFO, DEBUG };
 
 	struct SegmentData {
 		// On send
@@ -62,24 +96,27 @@ class SlowConv : public CCC {
 		SeqNum cum_delivered_segs_at_send;
 
 		// On ACK
-		TimeDelta rtt;
-		SeqNumDelta this_loss_count;
+		TimeDelta rtt = 0;
+		SeqNumDelta this_loss_count = 0;
+		bool lost = false;
 	};
 
 	static const int HISTORY_SIZE = 32;
 	static const SeqNumDelta MIN_CWND = 5;
 	static const SegsRate INIT_MIN_C = MIN_CWND;  // ~60 Kbps
 	static const SegsRate INIT_MAX_C = 1e5;		  // ~1.2 Gbps
+	static const TimeDelta TIME_DELTA_MAX = 1e5;  // 1e2 seconds
 	static const TimeDelta MS_TO_SECS = 1e3;
 	static const double INTER_HISTORY_TIME = 1;		 // Multiple of min_rtt
 	static const double BELIEFS_TIMEOUT_PERIOD = 12;	 // Multiple of min_rtt
 	static const double JITTER_MULTIPLIER = 1;		 // Multiple of min_rtt
-	static const int MEASUREMENT_INTERVAL_RTT = 1;	 // Multiple of min_rtt
+	static const int MEASUREMENT_INTERVAL_RTPROP = 1;	 // Multiple of min_rtt
 	static const int MEASUREMENT_INTERVAL_HISTORY =
-		MEASUREMENT_INTERVAL_RTT / INTER_HISTORY_TIME;	// Multiple of history
+		MEASUREMENT_INTERVAL_RTPROP / INTER_HISTORY_TIME;	// Multiple of history
 	static const double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
 	static const double TIMEOUT_THRESH = 1.5;
     static const int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
+	static constexpr char* LOG_TYPE_TO_STR[] = {"ERROR", "INFO", "DEBUG"};
 
    protected:
 	Time cur_tick;
@@ -92,7 +129,7 @@ class SlowConv : public CCC {
 	Time last_history_update_time;
 	State state;
 
-	std::unordered_map<SeqNum, SegmentData> unacknowledged_segs;
+	std::map<SeqNum, SegmentData> unacknowledged_segs;
 	boost::circular_buffer<History> history;
 	Beliefs beliefs;
 
@@ -102,6 +139,9 @@ class SlowConv : public CCC {
 	SegsRate sending_rate;
     SeqNumDelta cwnd;
 
+	std::string logfilepath;
+	std::ofstream logfile;
+
 	Time current_timestamp() { return cur_tick; }
 	SegsRate get_min_sending_rate();
 	void update_beliefs_minc_maxc(Time now, SegmentData);
@@ -109,10 +149,40 @@ class SlowConv : public CCC {
 	void update_beliefs(Time, SegmentData, bool, TimeDelta);
 	void update_history(Time, SegmentData);
 	void update_rate_cwnd(Time);
+	void update_rate_cwnd_fast_conv(Time);
+	void update_rate_cwnd_slow_conv(Time);
+	void log(LogLevel, std::string);
+	void log_state(Time);
+	void log_beliefs(Time);
+	void log_history(Time);
 	SeqNumDelta count_loss(SeqNum seq);
 
    public:
-	SlowConv() {}
+	SlowConv(std::string logfilepath = std::string())
+		: cur_tick(0),
+		  genericcc_min_rtt(0),
+		  genericcc_rate_measurement(0),
+		  last_timeout_time(0),
+		  last_rate_update_time(0),
+		  last_history_update_time(0),
+		  state(State::SLOW_START),
+		  unacknowledged_segs(),
+		  history(HISTORY_SIZE),
+		  beliefs(Beliefs()),
+		  cum_segs_sent(0),
+		  cum_segs_delivered(0),
+		  cum_segs_lost(0),
+		  sending_rate(INIT_MIN_C),
+		  cwnd(MIN_CWND),
+		  logfile()
+	{
+		if (!logfilepath.empty()) {
+			this->logfilepath = logfilepath;
+			logfile.open(logfilepath);
+		}
+	}
+
+	~SlowConv() { logfile.close(); }
 
 	virtual void init() override;
 	virtual void onACK(SeqNum ack, Time receiver_timestamp,
