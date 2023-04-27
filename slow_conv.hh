@@ -25,7 +25,7 @@ class SlowConv : public CCC {
 
 		// What was delivered when the packet corresponding to this ACK was
 		// sent.
-		SeqNum creation_cum_segs_delivered_at_send;
+		SeqNum creation_cum_delivered_segs_at_send;
 
 		SeqNumDelta interval_segs_lost;
 
@@ -43,6 +43,15 @@ class SlowConv : public CCC {
 		SegsRate last_min_c_lambda;
 		SeqNumDelta bq_belief2;	 // estimated bottleneck queue segs
 		SeqNum last_segs_sent;
+
+        SegsRate min_c;
+        SegsRate max_c;
+
+		SegsRate minc_since_last_timeout;
+        SegsRate maxc_since_last_timeout;
+
+		SegsRate last_timeout_minc;
+        SegsRate last_timeout_maxc;
 	};
 
 	enum State { SLOW_START, PROBE, DRAIN };
@@ -50,7 +59,7 @@ class SlowConv : public CCC {
 	struct SegmentData {
 		// On send
 		Time send_tstamp;
-		SeqNum cum_segs_delivered_at_send;
+		SeqNum cum_delivered_segs_at_send;
 
 		// On ACK
 		TimeDelta rtt;
@@ -63,11 +72,13 @@ class SlowConv : public CCC {
 	static const SegsRate INIT_MAX_C = 1e5;		  // ~1.2 Gbps
 	static const TimeDelta MS_TO_SECS = 1e3;
 	static const double INTER_HISTORY_TIME = 1;		 // Multiple of min_rtt
-	static const double BELIEFS_TIMEOUT_PERIOD = 1;	 // Multiple of min_rtt
+	static const double BELIEFS_TIMEOUT_PERIOD = 12;	 // Multiple of min_rtt
 	static const double JITTER_MULTIPLIER = 1;		 // Multiple of min_rtt
 	static const int MEASUREMENT_INTERVAL_RTT = 1;	 // Multiple of min_rtt
 	static const int MEASUREMENT_INTERVAL_HISTORY =
 		MEASUREMENT_INTERVAL_RTT / INTER_HISTORY_TIME;	// Multiple of history
+    static const double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
+    static const double TIMEOUT_THRESH = 1.5;
 
    protected:
 	Time cur_tick;
@@ -75,6 +86,7 @@ class SlowConv : public CCC {
 	Time genericcc_min_rtt;
 	double genericcc_rate_measurement;
 
+	Time last_timeout_time;
 	Time last_rate_update_time;
 	Time last_history_update_time;
 	State state;
@@ -89,8 +101,9 @@ class SlowConv : public CCC {
 	SegsRate sending_rate;
 
 	Time current_timestamp() { return cur_tick; }
-	void update_beliefs_minc_maxc(Time now);
-	void update_beliefs_minc_lambda(Time now);
+	SegsRate min_sending_rate();
+	void update_beliefs_minc_maxc(Time now, SegmentData);
+	void update_beliefs_minc_lambda(Time now, SegmentData);
 	void update_beliefs(Time, SegmentData, bool, TimeDelta);
 	void update_history(Time, SegmentData);
 	void set_rate_cwnd();
