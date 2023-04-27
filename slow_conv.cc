@@ -44,9 +44,14 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp,
 	cum_segs_delivered++;
 
 	update_history(now, seg);  // this calls update beliefs
+	update_rate_cwnd(now);
 }
 
-void SlowConv::onPktSent(SeqNum seq_num) { cum_segs_sent++; }
+void SlowConv::onPktSent(SeqNum seq_num) {
+	cum_segs_sent++;
+	Time now = current_timestamp();
+	update_rate_cwnd(now);
+}
 
 void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
 	if (history.size() <= 1) {
@@ -87,17 +92,16 @@ void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
 		}
 	}
 
-	TimeDelta time_since_last_timeout = now - last_timeout_time;
-	bool timeout = time_since_last_timeout > beliefs.min_rtt * BELIEFS_TIMEOUT_PERIOD;
-
 	beliefs.minc_since_last_timeout = std::max(beliefs.minc_since_last_timeout, fresh_minc);
 	beliefs.maxc_since_last_timeout = std::min(beliefs.maxc_since_last_timeout, fresh_maxc);
-	SegsRate minc_since_start = std::max(beliefs.min_c, fresh_minc);
-	SegsRate maxc_since_start = std::min(beliefs.max_c, fresh_maxc);
+	beliefs.maxc_since_last_timeout = std::max(beliefs.maxc_since_last_timeout, get_min_sending_rate());
+	beliefs.min_c = std::max(beliefs.min_c, fresh_minc);
+	beliefs.max_c = std::min(beliefs.max_c, fresh_maxc);
+	beliefs.max_c = std::max(beliefs.max_c, get_min_sending_rate());
 
 	/**
 	 * There are 4 things:
-	 * - minc since start (using all intervals till now). also known as overall
+	 * - minc since start (using all intervals till now). also known as overall (deprecated)
 	 * - minc fresh (just using intervals that end now)
 	 * - minc since last timeout (using all intervals since last timeout). also
 	 * 	 known as recomputed
@@ -105,18 +109,21 @@ void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
 	 *   timeout)
 	 */
 
+	TimeDelta time_since_last_timeout = now - last_timeout_time;
+	bool timeout = time_since_last_timeout > beliefs.min_rtt * BELIEFS_TIMEOUT_PERIOD;
+
 	if (timeout) {
 		last_timeout_time = now;
-		bool minc_changed = minc_since_start > beliefs.last_timeout_minc;
-		bool maxc_changed = maxc_since_start < beliefs.last_timeout_maxc;
+		bool minc_changed = beliefs.min_c > beliefs.last_timeout_minc;
+		bool maxc_changed = beliefs.max_c < beliefs.last_timeout_maxc;
 
 		bool minc_changed_significantly =
-			minc_since_start >
+			beliefs.min_c >
 			BELIEFS_CHANGED_SIGNIFICANTLY_THRESH * beliefs.last_timeout_minc;
 		bool maxc_changed_significantly =
-			maxc_since_start * BELIEFS_CHANGED_SIGNIFICANTLY_THRESH <
+			beliefs.max_c * BELIEFS_CHANGED_SIGNIFICANTLY_THRESH <
 			beliefs.last_timeout_maxc;
-		bool beliefs_invalid = maxc_since_start < minc_since_start;
+		bool beliefs_invalid = beliefs.max_c < beliefs.min_c;
 		bool minc_came_close = minc_changed && beliefs_invalid;
 		bool maxc_came_close = maxc_changed && beliefs_invalid;
 		bool timeout_minc =
@@ -126,31 +133,21 @@ void SlowConv::update_beliefs_minc_maxc(Time now, SegmentData seg) {
 
 		if (timeout_minc) {
 			beliefs.min_c = beliefs.minc_since_last_timeout;
-		} else {
-			beliefs.min_c = minc_since_start;
 		}
 
 		if (timeout_maxc) {
-			beliefs.max_c = std::min(maxc_since_start * TIMEOUT_THRESH,
+			beliefs.max_c = std::min(beliefs.max_c * TIMEOUT_THRESH,
 									 beliefs.maxc_since_last_timeout);
-		} else {
-			beliefs.max_c = maxc_since_start;
 		}
 
-		beliefs.max_c = std::max(beliefs.max_c, min_sending_rate());
 		beliefs.last_timeout_maxc = beliefs.max_c;
 		beliefs.last_timeout_minc = beliefs.min_c;
 		beliefs.minc_since_last_timeout = INIT_MIN_C;
 		beliefs.maxc_since_last_timeout = INIT_MAX_C;
-
-	} else {
-		beliefs.min_c = minc_since_start;
-		beliefs.max_c = maxc_since_start;
-		beliefs.max_c = std::max(beliefs.max_c, min_sending_rate());
 	}
 }
 
-SegsRate SlowConv::min_sending_rate() {
+SegsRate SlowConv::get_min_sending_rate() {
 	return (MIN_CWND * MS_TO_SECS) / beliefs.min_rtt;
 }
 
@@ -251,4 +248,25 @@ void SlowConv::update_history(Time now, SegmentData seg) {
 	}
 }
 
-void SlowConv::set_rate_cwnd() {}
+void SlowConv::update_rate_cwnd(Time now) {
+	TimeDelta rtprop = beliefs.min_rtt;
+	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
+
+	TimeDelta time_since_last_rate_update = now - last_rate_update_time;
+	if (time_since_last_rate_update >= INTER_RATE_UPDATE_TIME * beliefs.min_rtt) {
+		last_rate_update_time = now;
+
+		SegsRate min_sending_rate = get_min_sending_rate();
+		if(beliefs.bq_belief1 > 2 * MIN_CWND) {
+			sending_rate = min_sending_rate;
+		} else {
+			sending_rate =
+				(rtprop + jitter) * beliefs.min_c_lambda + min_sending_rate;
+		}
+		sending_rate = std::max(sending_rate, min_sending_rate);
+		cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
+
+		_intersend_time = MS_TO_SECS / sending_rate;
+		_the_window = cwnd;
+	}
+}

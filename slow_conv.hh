@@ -77,8 +77,9 @@ class SlowConv : public CCC {
 	static const int MEASUREMENT_INTERVAL_RTT = 1;	 // Multiple of min_rtt
 	static const int MEASUREMENT_INTERVAL_HISTORY =
 		MEASUREMENT_INTERVAL_RTT / INTER_HISTORY_TIME;	// Multiple of history
-    static const double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
-    static const double TIMEOUT_THRESH = 1.5;
+	static const double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
+	static const double TIMEOUT_THRESH = 1.5;
+    static const int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
 
    protected:
 	Time cur_tick;
@@ -99,14 +100,15 @@ class SlowConv : public CCC {
 	SeqNum cum_segs_delivered;
 	SeqNum cum_segs_lost;
 	SegsRate sending_rate;
+    SeqNumDelta cwnd;
 
 	Time current_timestamp() { return cur_tick; }
-	SegsRate min_sending_rate();
+	SegsRate get_min_sending_rate();
 	void update_beliefs_minc_maxc(Time now, SegmentData);
 	void update_beliefs_minc_lambda(Time now, SegmentData);
 	void update_beliefs(Time, SegmentData, bool, TimeDelta);
 	void update_history(Time, SegmentData);
-	void set_rate_cwnd();
+	void update_rate_cwnd(Time);
 	SeqNumDelta count_loss(SeqNum seq);
 
    public:
