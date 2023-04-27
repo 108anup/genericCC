@@ -81,6 +81,8 @@ int main( int argc, char *argv[] ) {
 			traffic_params = arg.substr( 15 );
 		else if (arg.substr( 0, 11) == "delta_conf=")
 			delta_conf = arg.substr( 11 );
+		else if (arg.substr( 0, 12) == "logfilepath=")
+			logfilepath = arg.substr( 12 );
 		else if (arg.substr( 0, 13 ) == "train_length=")
 			train_length = atoi(arg.substr( 13 ).c_str());
 		else if( arg.substr( 0, 7 ) == "cctype=" ) {

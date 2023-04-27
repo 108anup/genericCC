@@ -184,6 +184,7 @@ class SlowConv: public CCC {
 		  logfile()
 	{
 		if (!logfilepath.empty()) {
+			std::cout << "Logging at " << logfilepath << "\n";
 			logfile.open(logfilepath);
 		}
 	}
