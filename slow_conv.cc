@@ -98,6 +98,7 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
 	// std::cout<<"This lost count "<<seg.this_loss_count<<"\n";
 	update_state(now, seg);
 	update_history(now, seg);  // this calls update beliefs
+	update_send_history_on_ack(now, seg);
 	update_rate_cwnd(now);
 }
 
@@ -110,7 +111,7 @@ void SlowConv::onPktSent(SeqNum seq) {
 		std::cerr << "on Sent Dupsent!! " << seq << "\n";
 		log(LogLevel::ERROR, "on Sent Dupsent!! " + std::to_string(seq));
 	} else {
-		unacknowledged_segs[seq] = {now, cum_segs_delivered, 0, 0, false};
+		unacknowledged_segs[seq] = {now, cum_segs_delivered, cum_segs_sent, 0, 0, false};
 		cum_segs_sent++;
 	}
 	SeqNumDelta inflight = cum_segs_sent - cum_segs_delivered - cum_segs_lost;
@@ -118,8 +119,7 @@ void SlowConv::onPktSent(SeqNum seq) {
 		std::cerr << "on Sent inflight " << inflight << " unacknowledged_segs "
 				  << unacknowledged_segs.size() << "\n";
 	}
-	// TODO: update beliefs on sent pkts also.
-	// TODO: Separately maintain sending history.
+	update_send_history_on_send(now, seg);
 	update_rate_cwnd(now);
 }
 
@@ -356,6 +356,38 @@ void SlowConv::update_history(Time now, SegmentData seg) {
 		latest.interval_segs_lost += seg.this_loss_count;
 		update_beliefs(now, seg, false, time_since_last_update);
 	}
+}
+
+void SlowConv::update_send_history_on_send(Time now, SegmentData seg) {
+	// std::cout << "update_send_history" << std::endl;
+	TimeDelta inter_history_time = INTER_HISTORY_TIME * beliefs.min_rtt;
+	TimeDelta time_since_last_update = now - last_send_history_update_time;
+	if (time_since_last_update >= inter_history_time) {
+		last_send_history_update_time = now;
+		SendHistory h = {now,
+					 TIME_DELTA_MAX,
+					 0,
+					 cum_segs_sent,
+					 cum_segs_delivered,
+					 cum_segs_lost,
+					 sending_rate,
+					 seg.cum_delivered_segs_at_send,
+					 seg.this_loss_count,
+					 false};
+		send_history.push_back(h);
+		// update_beliefs(now, seg, true, time_since_last_update);
+		// TODO: check this.
+	}
+}
+
+void SlowConv::update_send_history_on_ack(Time now, SegmentData seg) {
+	if(send_history.empty()) return;
+	TimeDelta time_since_last_update = now - last_send_history_update_time;
+	SendHistory &latest = send_history.back();
+	latest.interval_max_rtt = std::max(latest.interval_max_rtt, seg.rtt);
+	latest.interval_min_rtt = std::min(latest.interval_min_rtt, seg.rtt);
+	latest.interval_segs_lost += seg.this_loss_count;
+	// update_beliefs(now, seg, false, time_since_last_update);
 }
 
 void SlowConv::update_rate_cwnd(Time now) {

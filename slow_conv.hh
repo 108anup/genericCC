@@ -57,6 +57,44 @@ class SlowConv: public CCC {
 		}
 	};
 
+	struct SendHistory {
+		Time creation_tstamp;
+
+		TimeDelta interval_min_rtt;
+		TimeDelta interval_max_rtt;
+
+		SeqNum creation_cum_sent_segs;
+		SeqNum creation_cum_delivered_segs;
+		SeqNum creation_cum_lost_segs;
+
+		SegsRate creation_sending_rate;
+
+		// What was delivered when the packet corresponding to this ACK was
+		// sent.
+		SeqNum creation_cum_delivered_segs_at_send;
+
+		SeqNumDelta interval_segs_lost;
+
+		bool processed;
+
+		std::string to_string() {
+			std::stringstream ss;
+			ss << std::fixed << std::setprecision(2)
+			   << "creation_tstamp " << creation_tstamp
+			//    << " interval_min_rtt "
+			//    << interval_min_rtt << " interval_max_rtt " << interval_max_rtt
+			//    << " creation_cum_sent_segs " << creation_cum_sent_segs
+			//    << " creation_cum_delivered_segs " << creation_cum_delivered_segs
+			//    << " creation_cum_lost_segs " << creation_cum_lost_segs
+			//    << " creation_sending_rate " << creation_sending_rate
+			//    << " creation_cum_delivered_segs_at_send "
+			//    << creation_cum_delivered_segs_at_send
+			   << " interval_segs_lost "
+			   << interval_segs_lost << " processed " << processed;
+			return ss.str();
+		}
+	};
+
 	struct Beliefs {
 		// Updated on every ACK
 		TimeDelta min_rtt;
@@ -102,6 +140,7 @@ class SlowConv: public CCC {
 		// On send
 		Time send_tstamp;
 		SeqNum cum_delivered_segs_at_send;
+		SeqNum cum_sent_segs_at_send;
 
 		// On ACK
 		TimeDelta rtt;
@@ -135,10 +174,12 @@ class SlowConv: public CCC {
 	Time last_timeout_time;
 	Time last_rate_update_time;
 	Time last_history_update_time;
+	Time last_send_history_update_time;
 	State state;
 
 	std::map<SeqNum, SegmentData> unacknowledged_segs;
 	boost::circular_buffer<History> history;
+	boost::circular_buffer<SendHistory> send_history;
 	Beliefs beliefs;
 
 	SeqNum cum_segs_sent;
@@ -156,6 +197,8 @@ class SlowConv: public CCC {
 	void update_beliefs_minc_lambda(Time __attribute((unused)), SegmentData);
 	void update_beliefs(Time, SegmentData, bool, TimeDelta);
 	void update_history(Time, SegmentData);
+	void update_send_history_on_send(Time, SegmentData);
+	void update_send_history_on_ack(Time, SegmentData);
 	void update_rate_cwnd(Time);
 	void update_rate_cwnd_fast_conv(Time __attribute((unused)));
 	void update_rate_cwnd_slow_conv(Time __attribute((unused)));
