@@ -39,7 +39,7 @@ class SlowConv: public CCC {
 
 		bool processed;
 
-		std::string to_string() {
+		std::string to_string() const {
 			std::stringstream ss;
 			ss << std::fixed << std::setprecision(2)
 			   << "creation_tstamp " << creation_tstamp
@@ -77,7 +77,7 @@ class SlowConv: public CCC {
 
 		bool processed;
 
-		std::string to_string() {
+		std::string to_string() const {
 			std::stringstream ss;
 			ss << std::fixed << std::setprecision(2)
 			   << "creation_tstamp " << creation_tstamp
@@ -193,20 +193,22 @@ class SlowConv: public CCC {
 
 	Time current_timestamp() { return cur_tick; }
 	SegsRate get_min_sending_rate();
-	void update_beliefs_minc_maxc(Time, SegmentData __attribute((unused)));
-	void update_beliefs_minc_lambda(Time __attribute((unused)), SegmentData);
-	void update_beliefs(Time, SegmentData, bool, TimeDelta);
-	void update_history(Time, SegmentData);
-	void update_send_history_on_send(Time, SegmentData);
-	void update_send_history_on_ack(Time, SegmentData);
+	void update_beliefs_minc_maxc(Time, const SegmentData & __attribute((unused)));
+	void update_beliefs_minc_lambda(Time __attribute((unused)), const SegmentData &);
+	void update_beliefs(Time, const SegmentData &, bool, TimeDelta);
+	void update_history(Time, const SegmentData &);
+	void update_send_history_on_rate_update(Time);
+	// void update_send_history_on_send(Time, const SegmentData &);
+	void update_send_history_on_ack(Time __attribute((unused)), const SegmentData &);
 	void update_rate_cwnd(Time);
 	void update_rate_cwnd_fast_conv(Time __attribute((unused)));
 	void update_rate_cwnd_slow_conv(Time __attribute((unused)));
-	virtual void update_state(Time __attribute((unused)), SegmentData);
+	virtual void update_state(Time __attribute((unused)), const SegmentData &);
 	void log(LogLevel, std::string);
 	void log_state(Time);
 	void log_beliefs(Time);
 	void log_history(Time __attribute((unused)));
+	void log_send_history(Time __attribute((unused)));
 	SeqNumDelta count_loss(SeqNum seq);
 
    public:
@@ -219,9 +221,11 @@ class SlowConv: public CCC {
 		  last_timeout_time(0),
 		  last_rate_update_time(0),
 		  last_history_update_time(0),
+		  last_send_history_update_time(0),
 		  state(State::SLOW_START),
 		  unacknowledged_segs(),
 		  history(HISTORY_SIZE),
+		  send_history(HISTORY_SIZE),
 		  beliefs(Beliefs()),
 		  cum_segs_sent(0),
 		  cum_segs_delivered(0),

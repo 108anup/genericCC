@@ -7,7 +7,7 @@ class FastConv : public SlowConv {
     // https://stackoverflow.com/questions/347358/inheriting-constructors
     using SlowConv::SlowConv; // inherit constructor
 
-    void update_state(Time __attribute((unused)), SegmentData __attribute((unused))) override;
+    void update_state(Time __attribute((unused)), const SegmentData & __attribute((unused))) override;
 };
 
 #endif
