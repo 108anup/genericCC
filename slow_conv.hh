@@ -5,6 +5,7 @@
 #include <sstream>
 #include <fstream>
 #include <map>
+#include <iomanip>
 
 #include "ccc.hh"
 
@@ -40,14 +41,17 @@ class SlowConv: public CCC {
 
 		std::string to_string() {
 			std::stringstream ss;
-			ss << "creation_tstamp " << creation_tstamp << " interval_min_rtt "
-			   << interval_min_rtt << " interval_max_rtt " << interval_max_rtt
-			   << " creation_cum_sent_segs " << creation_cum_sent_segs
-			   << " creation_cum_delivered_segs " << creation_cum_delivered_segs
-			   << " creation_cum_lost_segs " << creation_cum_lost_segs
-			   << " creation_sending_rate " << creation_sending_rate
-			   << " creation_cum_delivered_segs_at_send "
-			   << creation_cum_delivered_segs_at_send << " interval_segs_lost "
+			ss << std::fixed << std::setprecision(2)
+			   << "creation_tstamp " << creation_tstamp
+			//    << " interval_min_rtt "
+			//    << interval_min_rtt << " interval_max_rtt " << interval_max_rtt
+			//    << " creation_cum_sent_segs " << creation_cum_sent_segs
+			//    << " creation_cum_delivered_segs " << creation_cum_delivered_segs
+			//    << " creation_cum_lost_segs " << creation_cum_lost_segs
+			//    << " creation_sending_rate " << creation_sending_rate
+			//    << " creation_cum_delivered_segs_at_send "
+			//    << creation_cum_delivered_segs_at_send
+			   << " interval_segs_lost "
 			   << interval_segs_lost << " processed " << processed;
 			return ss.str();
 		}
