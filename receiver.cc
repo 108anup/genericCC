@@ -72,6 +72,8 @@ void echo_packets(UDPSocket &sender_socket) {
 	chrono::high_resolution_clock::time_point start_time_point = \
 		chrono::high_resolution_clock::now();
 
+	// int expected_seq = -1;
+
 	while (1) {
 		int received __attribute((unused)) = -1;
 		while (received == -1) {
@@ -83,6 +85,10 @@ void echo_packets(UDPSocket &sender_socket) {
 		}
 
 		TCPHeader *header = (TCPHeader*)buff;
+		// if(header->seq_num != expected_seq) {
+		// 	std::cout<<"Potential loss. Got "<< header->seq_num << " expected " << expected_seq << std::endl;
+		// }
+		// expected_seq = header->seq_num + 1;
 		header->receiver_timestamp = \
 			chrono::duration_cast<chrono::duration<double>>(
 				chrono::high_resolution_clock::now() - start_time_point

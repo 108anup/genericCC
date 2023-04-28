@@ -37,16 +37,19 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
 	// std::cout << "onACK: " << ack << "\n";
 	SeqNum seq = ack - 1;
 
-	// std::cout<<"Pre  "<<seq<<" DS: ";
-	// int count = 0;
-	// for (auto it = unacknowledged_segs.begin(); it != unacknowledged_segs.end();
-	// 	 it++) {
-	// 	count++;
-	// 	std::cout<<it->first<<" ";
-	// 	if(count > 20)
-	// 		break;
+	// bool loss = false;
+	// if (unacknowledged_segs.begin()->first < seq) {
+	// 	loss = true;
+	// 	std::cout << "Pre  " << seq << " DS: ";
+	// 	int count = 0;
+	// 	for (auto it = unacknowledged_segs.begin();
+	// 		 it != unacknowledged_segs.end(); it++) {
+	// 		count++;
+	// 		std::cout << it->first << " ";
+	// 		if (count > 20) break;
+	// 	}
+	// 	std::cout << "\n";
 	// }
-	// std::cout<<"\n";
 
 	if (unacknowledged_segs.count(seq) == 0) {
 		std::cerr << "ERROR: on ACK Unknown Ack!! " << seq << "\n";
@@ -71,17 +74,18 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
 	SeqNumDelta segs_lost = count_loss(seq);
 	seg.this_loss_count = segs_lost;
 
-	// std::cout<<"Post "<<seq<<" DS: ";
-	// count = 0;
-	// for (auto it = unacknowledged_segs.begin(); it != unacknowledged_segs.end();
-	// 	 it++) {
-	// 	count++;
-	// 	std::cout<<it->first<<" ";
-	// 	if(count > 20)
-	// 		break;
+	// if(loss) {
+	// 	std::cout << "Post " << seq << " DS: ";
+	// 	int count = 0;
+	// 	for (auto it = unacknowledged_segs.begin();
+	// 		 it != unacknowledged_segs.end(); it++) {
+	// 		count++;
+	// 		std::cout << it->first << " ";
+	// 		if (count > 20) break;
+	// 	}
+	// 	std::cout << "\n";
+	// 	std::cout << "Segs lost " << segs_lost << "\n";
 	// }
-	// std::cout<<"\n";
-	// std::cout<<"Segs lost "<<segs_lost<<"\n";
 
 	Time now = current_timestamp();
 	seg.rtt = std::max((TimeDelta)0, now - sent_time);
@@ -95,7 +99,7 @@ void SlowConv::onACK(SeqNum ack, Time receiver_timestamp __attribute((unused)),
 		std::cerr << "on ACK inflight " << inflight << " unacknowledged_segs "
 				  << unacknowledged_segs.size() << "\n";
 	}
-	std::cout<<"This lost count "<<seg.this_loss_count<<"\n";
+	// std::cout<<"This lost count "<<seg.this_loss_count<<"\n";
 	update_state(now, seg);
 	update_history(now, seg);  // this calls update beliefs
 	update_send_history_on_ack(now, seg);
@@ -415,8 +419,10 @@ void SlowConv::update_beliefs(Time now, const SegmentData &seg, bool updated_his
 }
 
 void SlowConv::update_history(Time now, const SegmentData &seg) {
-	std::cout << "update_history" << std::endl;
-	std::cout << "seg.this_loss_count " << seg.this_loss_count << std::endl;
+	// if (seg.this_loss_count > 0) {
+	// 	std::cout << "update_history" << std::endl;
+	// 	std::cout << "seg.this_loss_count " << seg.this_loss_count << std::endl;
+	// }
 	TimeDelta inter_history_time = INTER_HISTORY_TIME * beliefs.min_rtt;
 	TimeDelta time_since_last_update = now - last_history_update_time;
 	if (time_since_last_update >= inter_history_time) {
