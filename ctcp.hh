@@ -213,6 +213,21 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
       last_ack_time = cur_time; // So we don't timeout repeatedly
     }
     // Warning: The number of unacknowledged packets may exceed the congestion window by num_packets_per_link_rate_measurement
+
+    // Venkat
+    // should_have_sent - actual_sent > 1, then send.
+    // should_have_sent = old_should_have_sent + rate * (cur_time - old_time)
+
+    // ?? (same as current)
+    // should_have_sent - actual_sent > 1, then send.
+    // should_have_sent = old_actual_sent + rate * (cur_time - old_time)
+
+    // Current
+    // rate * (cur - old) > 1
+
+    // CCAC
+    // A[t] = A[t-R] + r * R
+
     while (((seq_num < _largest_ack + 1 + congctrl.get_the_window()) &&
             (_last_send_time + congctrl.get_intersend_time() * train_length <= cur_time) &&
             (byte_switched?(num_packets_transmitted*data_size):cur_time) < flow_size ) ||

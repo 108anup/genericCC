@@ -177,6 +177,10 @@ class SlowConv: public CCC {
 	Time last_send_history_update_time;
 	State state;
 
+	SeqNum sent_at_last_rate_update;
+	SegsRate prev_measured_sending_rate;
+	SeqNum expected_cum_sent;
+
 	std::map<SeqNum, SegmentData> unacknowledged_segs;
 	boost::circular_buffer<History> history;
 	boost::circular_buffer<SendHistory> send_history;
@@ -223,6 +227,9 @@ class SlowConv: public CCC {
 		  last_history_update_time(0),
 		  last_send_history_update_time(0),
 		  state(State::SLOW_START),
+		  sent_at_last_rate_update(0),
+		  prev_measured_sending_rate(0),
+		  expected_cum_sent(0),
 		  unacknowledged_segs(),
 		  history(HISTORY_SIZE),
 		  send_history(HISTORY_SIZE),

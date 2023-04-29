@@ -504,6 +504,7 @@ void SlowConv::update_rate_cwnd(Time now) {
 	TimeDelta time_since_last_rate_update = now - last_rate_update_time;
 	if (time_since_last_rate_update >= INTER_RATE_UPDATE_TIME * beliefs.min_rtt) {
 		last_rate_update_time = now;
+		expected_cum_sent += (sending_rate * time_since_last_rate_update) / MS_TO_SECS;
 
 		if(state == State::SLOW_START) {
 			update_rate_cwnd_fast_conv(now);
@@ -517,6 +518,10 @@ void SlowConv::update_rate_cwnd(Time now) {
 				"State not implemented: " + std::to_string(state));
 			// assert(false);
 		}
+		prev_measured_sending_rate =
+			(cum_segs_sent - sent_at_last_rate_update) * MS_TO_SECS /
+			time_since_last_rate_update;
+		sent_at_last_rate_update = cum_segs_sent;
 		update_send_history_on_rate_update(now);
 		log_state(now);
 		log_beliefs(now);
@@ -572,9 +577,10 @@ void SlowConv::log(LogLevel l, std::string msg) {
 void SlowConv::log_state(Time now) {
 	std::stringstream ss;
 	ss << "new " << "time " << now << " cwnd " << cwnd << " sending_rate " << sending_rate
-	   << " state " << state;
+	   << " state " << state << " prev_measured_sending_rate " << prev_measured_sending_rate;
 	ss << " cum_segs_sent " << cum_segs_sent << " cum_segs_delivered "
 	   << cum_segs_delivered << " cum_segs_lost " << cum_segs_lost;
+	ss << " expected_cum_sent " << expected_cum_sent;
 	log(LogLevel::INFO, ss.str());
 }
 
@@ -682,6 +688,10 @@ void SlowConv::init() {
 	last_history_update_time = 0;
 	last_send_history_update_time = 0;
 	state = State::SLOW_START;
+
+	sent_at_last_rate_update = 0;
+	prev_measured_sending_rate = 0;
+	expected_cum_sent = 0;
 
 	unacknowledged_segs.clear();
 	history.clear();
