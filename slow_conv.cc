@@ -393,26 +393,36 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 	// TODO: Implement timeout
 }
 
-void SlowConv::update_beliefs(Time now, const SegmentData &seg, bool updated_history,
-							  TimeDelta time_since_last_update) {
-	// std::cout << "update_beliefs" << std::endl;
+void SlowConv::update_bq_beliefs_on_ack_and_sent(Time now) {
+	// Bq = bottleneck queue. In CCAC this is Token queue - packet queue.
+	// Bq 1 (Inflight upper bound on bq)
+	beliefs.bq_belief1 = cum_segs_sent - cum_segs_delivered - cum_segs_lost;
+	beliefs.bq_belief1 = std::max((SeqNumDelta)0, beliefs.bq_belief1);
+
+
+	// Bq 2 Tighter upper bound when beliefs are consistent.
+	SeqNumDelta estimated_sent = cum_segs_sent - beliefs.last_bq_update_segs_sent;
+	beliefs.last_bq_update_segs_sent = cum_segs_sent;
+	TimeDelta time_since_last_update = now - beliefs.last_bq_update_time;
+	beliefs.last_bq_update_time = now;
+	SeqNumDelta estimated_delivered =
+		beliefs.min_c_lambda * time_since_last_update;
+	beliefs.bq_belief2 =
+		beliefs.bq_belief2 + estimated_sent - estimated_delivered;
+	beliefs.bq_belief2 = std::max((SeqNumDelta)0, beliefs.bq_belief2);
+	beliefs.bq_belief2 = std::min(beliefs.bq_belief2, beliefs.bq_belief1);
+}
+
+void SlowConv::update_beliefs_on_ack(Time now, const SegmentData &seg, bool updated_history,
+							  TimeDelta time_since_last_update __attribute((unused))) {
+	// std::cout << "update_beliefs_on_ack" << std::endl;
 	beliefs.min_rtt = std::min(beliefs.min_rtt, seg.rtt);
 	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
 
 	beliefs.min_qdel =
 		std::max((TimeDelta)0, seg.rtt - beliefs.min_rtt - jitter);
-	beliefs.bq_belief1 = cum_segs_sent - cum_segs_delivered - cum_segs_lost;
 
 	if (updated_history) {
-		SeqNumDelta estimated_sent = cum_segs_sent - beliefs.last_segs_sent;
-		SeqNumDelta estimated_delivered =
-			beliefs.min_c_lambda * time_since_last_update;
-		beliefs.bq_belief2 =
-			beliefs.bq_belief2 + estimated_sent - estimated_delivered;
-		beliefs.bq_belief2 = std::max((SeqNumDelta)0, beliefs.bq_belief2);
-		beliefs.bq_belief2 = std::min(beliefs.bq_belief2, beliefs.bq_belief1);
-		beliefs.last_segs_sent = cum_segs_sent;
-
 		update_beliefs_minc_maxc(now, seg);
 		update_beliefs_minc_lambda(now, seg);
 	}
@@ -438,13 +448,13 @@ void SlowConv::update_history(Time now, const SegmentData &seg) {
 					 seg.this_loss_count,
 					 false};
 		history.push_back(h);
-		update_beliefs(now, seg, true, time_since_last_update);
+		update_beliefs_on_ack(now, seg, true, time_since_last_update);
 	} else {
 		History &latest = history.back();
 		latest.interval_max_rtt = std::max(latest.interval_max_rtt, seg.rtt);
 		latest.interval_min_rtt = std::min(latest.interval_min_rtt, seg.rtt);
 		latest.interval_segs_lost += seg.this_loss_count;
-		update_beliefs(now, seg, false, time_since_last_update);
+		update_beliefs_on_ack(now, seg, false, time_since_last_update);
 	}
 }
 
@@ -465,7 +475,7 @@ void SlowConv::update_history(Time now, const SegmentData &seg) {
 // 					 seg.this_loss_count,
 // 					 false};
 // 		send_history.push_back(h);
-// 		// update_beliefs(now, seg, true, time_since_last_update);
+// 		// update_beliefs_on_ack(now, seg, true, time_since_last_update);
 // 		// TODO: check this.
 // 	}
 // }
@@ -485,7 +495,7 @@ void SlowConv::update_send_history_on_rate_update(Time now) {
 					0,
 					false};
 	send_history.push_back(h);
-	// update_beliefs(now, seg, true, time_since_last_update);
+	// update_beliefs_on_ack(now, seg, true, time_since_last_update);
 	// TODO: check this.
 }
 
@@ -496,7 +506,7 @@ void SlowConv::update_send_history_on_ack(Time now __attribute((unused)), const 
 	latest.interval_max_rtt = std::max(latest.interval_max_rtt, seg.rtt);
 	latest.interval_min_rtt = std::min(latest.interval_min_rtt, seg.rtt);
 	latest.interval_segs_lost += seg.this_loss_count;
-	// update_beliefs(now, seg, false, time_since_last_update);
+	// update_beliefs_on_ack(now, seg, false, time_since_last_update);
 }
 
 void SlowConv::update_rate_cwnd(Time now) {
@@ -505,6 +515,9 @@ void SlowConv::update_rate_cwnd(Time now) {
 	if (time_since_last_rate_update >= INTER_RATE_UPDATE_TIME * beliefs.min_rtt) {
 		last_rate_update_time = now;
 		expected_cum_sent += (sending_rate * time_since_last_rate_update) / MS_TO_SECS;
+
+		// Done here as we want to synchronize this with rate_cwnd update.
+		update_bq_beliefs_on_ack_and_sent(now);
 
 		if(state == State::SLOW_START) {
 			update_rate_cwnd_fast_conv(now);
@@ -518,6 +531,7 @@ void SlowConv::update_rate_cwnd(Time now) {
 				"State not implemented: " + std::to_string(state));
 			// assert(false);
 		}
+
 		prev_measured_sending_rate =
 			(cum_segs_sent - sent_at_last_rate_update) * MS_TO_SECS /
 			time_since_last_rate_update;
@@ -547,6 +561,24 @@ void SlowConv::update_rate_cwnd_slow_conv(Time now __attribute((unused))) {
 	_intersend_time = MS_TO_SECS / sending_rate;
 	_the_window = cwnd;
 }
+
+// void SlowConv::update_rate_cwnd_slow_conv(Time now __attribute((unused))) {
+// 	TimeDelta rtprop = beliefs.min_rtt;
+// 	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
+
+// 	SegsRate min_sending_rate = get_min_sending_rate();
+// 	if(beliefs.bq_belief1 > 2 * MIN_CWND) {
+// 		cwnd = MIN_CWND;
+// 	} else {
+// 		cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
+// 	}
+// 	sending_rate =
+// 			(1 + JITTER_MULTIPLIER) * beliefs.min_c_lambda + min_sending_rate;
+// 	sending_rate = std::max(sending_rate, min_sending_rate);
+
+// 	_intersend_time = MS_TO_SECS / sending_rate;
+// 	_the_window = cwnd;
+// }
 
 void SlowConv::update_rate_cwnd_fast_conv(Time now __attribute((unused))) {
 	TimeDelta rtprop = beliefs.min_rtt;

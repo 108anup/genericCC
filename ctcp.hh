@@ -15,7 +15,10 @@
 
 using namespace std;
 
-#define packet_size 1440
+// #define packet_size 1440
+#define packet_size 1472
+// ^^ Max size (Ethernet MSS - IP header - UDP header) = 1500 - 20 - 8.
+// Match one pkt in mahimahi and one pkt in genericcc.
 #define data_size (packet_size-sizeof(TCPHeader))
 
 template <class T>
@@ -228,6 +231,9 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
     // CCAC
     // A[t] = A[t-R] + r * R
 
+    // chrono::high_resolution_clock::time_point last_time_here = chrono::high_resolution_clock::now();
+    // chrono::high_resolution_clock::time_point now = chrono::high_resolution_clock::now();
+
     while (((seq_num < _largest_ack + 1 + congctrl.get_the_window()) &&
             (_last_send_time + congctrl.get_intersend_time() * train_length <= cur_time) &&
             (byte_switched?(num_packets_transmitted*data_size):cur_time) < flow_size ) ||
@@ -240,6 +246,12 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
       memcpy( buf, &header, sizeof(TCPHeader) );
       socket.senddata( buf, packet_size, NULL );
       _last_send_time += congctrl.get_intersend_time();
+
+      // now = chrono::high_resolution_clock::now();
+      // if (now - last_time_here > chrono::milliseconds(10)) {
+      //   std::cerr << "ERROR: waiting too long" << std::endl;
+      // }
+      // last_time_here = now;
 
       if (seq_num % train_length == 0) {
         congctrl.set_timestamp(cur_time);

@@ -99,15 +99,18 @@ class SlowConv: public CCC {
 		// Updated on every ACK
 		TimeDelta min_rtt;
 		TimeDelta min_qdel;
-		SeqNumDelta bq_belief1;	 // inflight segs
 
 		// Updated every rtprop time (on seg sent)
 		SegsRate min_c_lambda;
 		SegsRate last_min_c_lambda;
-		SeqNumDelta bq_belief2;	 // estimated bottleneck queue segs
-		SeqNum last_segs_sent;
 
-        SegsRate min_c;
+		// Updated before every time cwnd/rate is updated (regardless of ACK or sent.)
+		SeqNumDelta bq_belief1;	 // inflight segs
+		SeqNumDelta bq_belief2;	 // estimated bottleneck queue segs
+		SeqNum last_bq_update_segs_sent;
+		Time last_bq_update_time;
+
+		SegsRate min_c;
         SegsRate max_c;
 
 		SegsRate minc_since_last_timeout;
@@ -119,11 +122,12 @@ class SlowConv: public CCC {
 		Beliefs()
 			: min_rtt(TIME_DELTA_MAX),
 			  min_qdel(TIME_DELTA_MAX),
-			  bq_belief1(0),
 			  min_c_lambda(INIT_MIN_C),
 			  last_min_c_lambda(INIT_MIN_C),
+			  bq_belief1(0),
 			  bq_belief2(0),
-			  last_segs_sent(0),
+			  last_bq_update_segs_sent(0),
+			  last_bq_update_time(0),
 			  min_c(INIT_MIN_C),
 			  max_c(INIT_MAX_C),
 			  minc_since_last_timeout(INIT_MIN_C),
@@ -199,7 +203,8 @@ class SlowConv: public CCC {
 	SegsRate get_min_sending_rate();
 	void update_beliefs_minc_maxc(Time, const SegmentData & __attribute((unused)));
 	void update_beliefs_minc_lambda(Time __attribute((unused)), const SegmentData &);
-	void update_beliefs(Time, const SegmentData &, bool, TimeDelta);
+	void update_beliefs_on_ack(Time, const SegmentData &, bool, TimeDelta __attribute((unused)));
+	void update_bq_beliefs_on_ack_and_sent(Time);
 	void update_history(Time, const SegmentData &);
 	void update_send_history_on_rate_update(Time);
 	// void update_send_history_on_send(Time, const SegmentData &);
