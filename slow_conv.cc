@@ -187,21 +187,21 @@ void SlowConv::update_beliefs_minc_maxc(Time now, const SegmentData &seg __attri
 	 *   timeout)
 	 */
 
-	TimeDelta time_since_last_timeout = now - last_timeout_time;
+	TimeDelta time_since_last_timeout = now - beliefs.last_minc_maxc_timeout_time;
 	bool timeout = time_since_last_timeout > beliefs.min_rtt * BELIEFS_TIMEOUT_PERIOD;
 
 	if (timeout) {
 		// std::cout << "timeout " << "\n";
-		last_timeout_time = now;
-		bool minc_changed = beliefs.min_c > beliefs.last_timeout_minc;
-		bool maxc_changed = beliefs.max_c < beliefs.last_timeout_maxc;
+		beliefs.last_minc_maxc_timeout_time = now;
+		bool minc_changed = beliefs.min_c > beliefs.minc_at_last_timeout;
+		bool maxc_changed = beliefs.max_c < beliefs.maxc_at_last_timeout;
 
 		bool minc_changed_significantly =
 			beliefs.min_c >
-			BELIEFS_CHANGED_SIGNIFICANTLY_THRESH * beliefs.last_timeout_minc;
+			BELIEFS_CHANGED_SIGNIFICANTLY_THRESH * beliefs.minc_at_last_timeout;
 		bool maxc_changed_significantly =
 			beliefs.max_c * BELIEFS_CHANGED_SIGNIFICANTLY_THRESH <
-			beliefs.last_timeout_maxc;
+			beliefs.maxc_at_last_timeout;
 		bool beliefs_invalid = beliefs.max_c < beliefs.min_c;
 		bool minc_came_close = minc_changed && beliefs_invalid;
 		bool maxc_came_close = maxc_changed && beliefs_invalid;
@@ -219,8 +219,8 @@ void SlowConv::update_beliefs_minc_maxc(Time now, const SegmentData &seg __attri
 									 beliefs.maxc_since_last_timeout);
 		}
 
-		beliefs.last_timeout_maxc = beliefs.max_c;
-		beliefs.last_timeout_minc = beliefs.min_c;
+		beliefs.maxc_at_last_timeout = beliefs.max_c;
+		beliefs.minc_at_last_timeout = beliefs.min_c;
 		beliefs.minc_since_last_timeout = INIT_MIN_C;
 		beliefs.maxc_since_last_timeout = INIT_MAX_C;
 	}
@@ -256,7 +256,7 @@ SegsRate SlowConv::get_min_sending_rate() {
 // 	// log(LogLevel::DEBUG, "min_c_lambda debug cum_underutilized " +
 // 	// 						 std::string(cum_underutilized ? "true" : "false"));
 
-// 	SegsRate new_minc_lambda = INIT_MIN_C;
+// 	SegsRate fresh_minc_lambda = INIT_MIN_C;
 // 	size_t depth = 0;
 // 	// TODO: can start from history.size()-1.
 // 	auto hit = history.rbegin();
@@ -299,14 +299,14 @@ SegsRate SlowConv::get_min_sending_rate() {
 // 		SeqNumDelta this_segs_sent =
 // 			et.creation_cum_sent_segs - st.creation_cum_sent_segs;
 // 		TimeDelta this_time_window = et.creation_tstamp - st.creation_tstamp;
-// 		new_minc_lambda = std::max(
-// 			new_minc_lambda, (this_segs_sent * MS_TO_SECS) / (this_time_window + jitter));
+// 		fresh_minc_lambda = std::max(
+// 			fresh_minc_lambda, (this_segs_sent * MS_TO_SECS) / (this_time_window + jitter));
 
-// 		// ss << " new_minc_lambda: " << new_minc_lambda;
+// 		// ss << " fresh_minc_lambda: " << fresh_minc_lambda;
 // 		// log(LogLevel::DEBUG, ss.str());
 // 	}
 
-// 	beliefs.min_c_lambda = std::max(beliefs.min_c_lambda, new_minc_lambda);
+// 	beliefs.min_c_lambda = std::max(beliefs.min_c_lambda, fresh_minc_lambda);
 // 	// TODO: Implement timeout
 // }
 
@@ -337,7 +337,7 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 	// log(LogLevel::DEBUG, "min_c_lambda debug cum_underutilized " +
 	// 						 std::string(cum_underutilized ? "true" : "false"));
 
-	SegsRate new_minc_lambda = INIT_MIN_C;
+	SegsRate fresh_minc_lambda = INIT_MIN_C;
 	size_t depth = 0;
 	// TODO: can start from send_history.size()-1.
 	auto hit = send_history.rbegin();
@@ -382,15 +382,32 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 		SeqNumDelta this_segs_sent =
 			et.creation_cum_sent_segs - st.creation_cum_sent_segs;
 		TimeDelta this_time_window = et.creation_tstamp - st.creation_tstamp;
-		new_minc_lambda = std::max(
-			new_minc_lambda, (this_segs_sent * MS_TO_SECS) / (this_time_window + jitter));
+		fresh_minc_lambda = std::max(
+			fresh_minc_lambda, (this_segs_sent * MS_TO_SECS) / (this_time_window + jitter));
 
-		// ss << " new_minc_lambda: " << new_minc_lambda;
+		// ss << " fresh_minc_lambda: " << fresh_minc_lambda;
 		// log(LogLevel::DEBUG, ss.str());
 	}
 
-	beliefs.min_c_lambda = std::max(beliefs.min_c_lambda, new_minc_lambda);
-	// TODO: Implement timeout
+	if(fresh_minc_lambda >= beliefs.min_c_lambda) {
+		beliefs.prev_consistent_min_c_lambda = fresh_minc_lambda;
+	}
+	beliefs.min_c_lambda = std::max(beliefs.min_c_lambda, fresh_minc_lambda);
+
+	TimeDelta time_since_last_timeout = now - beliefs.last_minc_lambda_timeout_time;
+	bool timeout = time_since_last_timeout > beliefs.min_rtt * BELIEFS_TIMEOUT_PERIOD;
+
+	// TODO: Implement correctly based on the proof.
+	if (timeout) {
+		beliefs.last_minc_lambda_timeout_time = now;
+		if (beliefs.min_c_lambda > beliefs.prev_consistent_min_c_lambda) {
+			beliefs.min_c_lambda = std::max(
+				beliefs.prev_consistent_min_c_lambda, fresh_minc_lambda);
+		} else {
+			beliefs.min_c_lambda = std::max(
+				beliefs.min_c_lambda / TIMEOUT_THRESH, fresh_minc_lambda);
+		}
+	}
 }
 
 void SlowConv::update_bq_beliefs_on_ack_and_sent(Time now) {
@@ -721,7 +738,6 @@ void SlowConv::init() {
 	genericcc_min_rtt = 0;
 	genericcc_rate_measurement = 0;
 
-	last_timeout_time = 0;
 	last_rate_update_time = 0;
 	last_history_update_time = 0;
 	last_send_history_update_time = 0;

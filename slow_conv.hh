@@ -100,40 +100,51 @@ class SlowConv: public CCC {
 		TimeDelta min_rtt;
 		TimeDelta min_qdel;
 
-		// Updated every rtprop time (on seg sent)
-		SegsRate min_c_lambda;
-		SegsRate last_min_c_lambda;
-
-		// Updated before every time cwnd/rate is updated (regardless of ACK or sent.)
+		// Updated before every time cwnd/rate is updated (regardless of ACK or
+		// sent.)
 		SeqNumDelta bq_belief1;	 // inflight segs
 		SeqNumDelta bq_belief2;	 // estimated bottleneck queue segs
 		SeqNum last_bq_update_segs_sent;
 		Time last_bq_update_time;
 
+		// Updated every rtprop time (on ACK)
+		Time last_minc_lambda_timeout_time;
+		SegsRate min_c_lambda;
+		SegsRate prev_consistent_min_c_lambda;
+
+		// SegsRate min_c_lambda_since_last_timeout;
+		// This is not needed since the fresh_min_c_lambda is actually
+		// recomputed over the entire recorded history.
+
+		Time last_minc_maxc_timeout_time;
 		SegsRate min_c;
-        SegsRate max_c;
+		SegsRate max_c;
 
 		SegsRate minc_since_last_timeout;
-        SegsRate maxc_since_last_timeout;
+		SegsRate maxc_since_last_timeout;
 
-		SegsRate last_timeout_minc;
-        SegsRate last_timeout_maxc;
+		SegsRate minc_at_last_timeout;
+		SegsRate maxc_at_last_timeout;
 
 		Beliefs()
 			: min_rtt(TIME_DELTA_MAX),
 			  min_qdel(TIME_DELTA_MAX),
-			  min_c_lambda(INIT_MIN_C),
-			  last_min_c_lambda(INIT_MIN_C),
 			  bq_belief1(0),
 			  bq_belief2(0),
 			  last_bq_update_segs_sent(0),
 			  last_bq_update_time(0),
+
+			  last_minc_lambda_timeout_time(0),
+			  min_c_lambda(INIT_MIN_C),
+			  prev_consistent_min_c_lambda(INIT_MIN_C),
+
+			  last_minc_maxc_timeout_time(0),
 			  min_c(INIT_MIN_C),
 			  max_c(INIT_MAX_C),
 			  minc_since_last_timeout(INIT_MIN_C),
 			  maxc_since_last_timeout(INIT_MAX_C),
-			  last_timeout_minc(INIT_MIN_C),
-			  last_timeout_maxc(INIT_MAX_C) {}
+			  minc_at_last_timeout(INIT_MIN_C),
+			  maxc_at_last_timeout(INIT_MAX_C) {}
 	};
 
 	enum State { SLOW_START, CONG_AVOID, PROBE, DRAIN };
@@ -166,7 +177,7 @@ class SlowConv: public CCC {
 		MEASUREMENT_INTERVAL_RTPROP / INTER_HISTORY_TIME;	// Multiple of history
 	static constexpr double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
 	static constexpr double TIMEOUT_THRESH = 1.5;
-    static constexpr int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
+	static constexpr int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
 	std::string LOG_TYPE_TO_STR[3];
 
    protected:
@@ -175,7 +186,6 @@ class SlowConv: public CCC {
 	Time genericcc_min_rtt;
 	double genericcc_rate_measurement;
 
-	Time last_timeout_time;
 	Time last_rate_update_time;
 	Time last_history_update_time;
 	Time last_send_history_update_time;
@@ -194,7 +204,7 @@ class SlowConv: public CCC {
 	SeqNum cum_segs_delivered;
 	SeqNum cum_segs_lost;
 	SegsRate sending_rate;
-    SeqNumDelta cwnd;
+	SeqNumDelta cwnd;
 
 	std::string logfilepath;
 	std::ofstream logfile;
@@ -229,7 +239,6 @@ class SlowConv: public CCC {
 		  cur_tick(0),
 		  genericcc_min_rtt(0),
 		  genericcc_rate_measurement(0),
-		  last_timeout_time(0),
 		  last_rate_update_time(0),
 		  last_history_update_time(0),
 		  last_send_history_update_time(0),
