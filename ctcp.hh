@@ -410,6 +410,7 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
   _last_send_time = 0;
 
   int num_packets_transmitted = 0;
+  double delay_sum = 0;
 
   cur_time = current_timestamp( start_time_point );
   congctrl.set_timestamp(cur_time);
@@ -418,10 +419,10 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
   while ((byte_switched?(num_packets_transmitted*data_size):cur_time) < flow_size) {
     cur_time = current_timestamp( start_time_point );
     congctrl.set_timestamp(cur_time);
-    if (((seq_num < _largest_ack + 1 + congctrl.get_the_window()) &&
-            (_last_send_time + congctrl.get_intersend_time() * train_length <= cur_time) &&
-            (byte_switched?(num_packets_transmitted*data_size):cur_time) < flow_size ) // ||
-           ) {
+
+    if ((seq_num < _largest_ack + 1 + congctrl.get_the_window()) &&
+      (_last_send_time + congctrl.get_intersend_time() * train_length <=
+      cur_time)) {
       header.seq_num = seq_num;
       header.flow_id = flow_id;
       header.src_id = src_id;
@@ -449,6 +450,7 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
       }
       continue;
     }
+    delay_sum += cur_time - ack_header.sender_timestamp;
     congctrl.onACK(ack_header.seq_num / train_length,
                     ack_header.receiver_timestamp,
                     ack_header.sender_timestamp);
@@ -459,6 +461,14 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
   cur_time = current_timestamp( start_time_point );
   congctrl.set_timestamp(cur_time);
   congctrl.close();
+
+  double throughput = num_packets_transmitted/( cur_time / 1000.0 );
+  double delay = (delay_sum / 1000) / num_packets_transmitted;
+
+  std::cout << "\nData Successfully Transmitted\n\tThroughput: " << throughput
+			<< " packets/sec\n\tAverage Delay: " << delay
+			<< " sec/packet\n\tCompletion time: " << cur_time / 1000.0
+			<< "sec\n";
 }
 
 template<class T>
