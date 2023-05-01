@@ -324,11 +324,19 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 	bool this_underutilized;
 	bool cum_underutilized;
 
+	SeqNumDelta max_segs_lost_in_1rtprop = 0;
+	bool large_loss_happened = false;
+	bool probe_based_timeout = false;
+	bool minc_increased_and_lower = false;
+
 	const SendHistory &latest = send_history.back();
 	this_low_delay = latest.interval_max_rtt <= (rtprop + jitter);
 	this_loss = latest.interval_segs_lost > 0;
 	this_underutilized = this_low_delay && !this_loss;
 	cum_underutilized = this_underutilized;
+	large_loss_happened |=
+		latest.interval_segs_lost > 2 * MIN_CWND;
+	max_segs_lost_in_1rtprop = std::max(max_segs_lost_in_1rtprop, latest.interval_segs_lost);
 
 	// SeqNum delivered_1rtt_ago = seg.cum_delivered_segs_at_send;
 	SeqNum sent_1rtt_ago = seg.cum_sent_segs_at_send;
@@ -352,6 +360,9 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 		this_loss = st.interval_segs_lost > 0;
 		this_underutilized = this_low_delay && !this_loss;
 		cum_underutilized = cum_underutilized && this_underutilized;
+		large_loss_happened |=
+			st.interval_segs_lost > 2 * MIN_CWND;
+		max_segs_lost_in_1rtprop = std::max(max_segs_lost_in_1rtprop, st.interval_segs_lost);
 
 		if (depth < MEASUREMENT_INTERVAL_HISTORY) continue;
 
@@ -389,24 +400,66 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 		// log(LogLevel::DEBUG, ss.str());
 	}
 
-	if(fresh_minc_lambda >= beliefs.min_c_lambda) {
-		beliefs.prev_consistent_min_c_lambda = fresh_minc_lambda;
+	if(fresh_minc_lambda > beliefs.min_c_lambda) {
+		beliefs.prev_consistent_min_c_lambda = beliefs.min_c_lambda;
 	}
 	beliefs.min_c_lambda = std::max(beliefs.min_c_lambda, fresh_minc_lambda);
+	beliefs.min_c_lambda_since_last_timeout = std::max(
+		beliefs.min_c_lambda_since_last_timeout, fresh_minc_lambda);
+
+	/**
+	 * timeout_min_c_lambda = \
+		z3.If(timeout_allowed,
+			z3.If(large_loss_happened, True,
+				z3.If(minc_increased_and_lower, True,
+						z3.If(probe_based_timeout, True, False))),
+			False)
+	*/
 
 	TimeDelta time_since_last_timeout = now - beliefs.last_minc_lambda_timeout_time;
 	bool timeout = time_since_last_timeout > beliefs.min_rtt * BELIEFS_TIMEOUT_PERIOD;
 
-	// TODO: Implement correctly based on the proof.
+	SeqNumDelta inflight = cum_segs_sent - cum_segs_lost - cum_segs_delivered;
+	SeqNumDelta max_inflight =
+		(rtprop + jitter) * beliefs.min_c_lambda / rtprop + 2 * MIN_CWND;
+	bool large_inflight = inflight > max_inflight;
+	bool use_timeout = large_loss_happened || large_inflight ||
+					   minc_increased_and_lower || probe_based_timeout;
+	// TODO: Implement correctly based on the proof. currently,
+	//  minc_increased_and_lower and probe_based_timeout are not implemented.
+	//  this implementation may not timeout correctly when buffer is large and
+	//  the slow_conv CCA is used.
+
 	if (timeout) {
 		beliefs.last_minc_lambda_timeout_time = now;
-		if (beliefs.min_c_lambda > beliefs.prev_consistent_min_c_lambda) {
-			beliefs.min_c_lambda = std::max(
-				beliefs.prev_consistent_min_c_lambda, fresh_minc_lambda);
-		} else {
-			beliefs.min_c_lambda = std::max(
-				beliefs.min_c_lambda / TIMEOUT_THRESH, fresh_minc_lambda);
+
+		// std::cout << "time " << now << " use_timeout " << use_timeout
+		//           << " min_c_lambda " << beliefs.min_c_lambda
+		//           << " max_segs_lost_in_1rtprop " << max_segs_lost_in_1rtprop
+		//           << " large_loss_happened " << large_loss_happened
+		//           << " large_inflight " << large_inflight
+		//           << " min_c_lambda_since_last_timeout "
+		//           << beliefs.min_c_lambda_since_last_timeout
+		//           << " prev_consistent_min_c_lambda "
+		//           << beliefs.prev_consistent_min_c_lambda << std::endl;
+
+		if (use_timeout) {
+			// Do not use prev_consistent_min_c_lambda as we have guards on
+			// when to timeout anyway.
+			// if (beliefs.min_c_lambda > beliefs.prev_consistent_min_c_lambda) {
+			// 	beliefs.min_c_lambda =
+			// 		std::max(beliefs.prev_consistent_min_c_lambda,
+			// 				 beliefs.min_c_lambda_since_last_timeout);
+			// } else {
+			// 	beliefs.min_c_lambda =
+			// 		std::max(beliefs.min_c_lambda / TIMEOUT_THRESH,
+			// 				 beliefs.min_c_lambda_since_last_timeout);
+			// }
+			beliefs.min_c_lambda =
+					std::max(beliefs.min_c_lambda / TIMEOUT_THRESH,
+							 beliefs.min_c_lambda_since_last_timeout);
 		}
+		beliefs.min_c_lambda_since_last_timeout = INIT_MIN_C;
 	}
 }
 
@@ -647,6 +700,7 @@ void SlowConv::log_beliefs(Time now) {
 	ss << " min_c_lambda " << beliefs.min_c_lambda << " bq_belief1 "
 	   << beliefs.bq_belief1 << " bq_belief2 " << beliefs.bq_belief2;
 	ss << " unacknowledged_segs " << unacknowledged_segs.size();
+	ss << " prev_consistent_min_c_lambda " << beliefs.prev_consistent_min_c_lambda;
 	log(LogLevel::INFO, ss.str());
 }
 

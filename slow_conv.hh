@@ -112,9 +112,12 @@ class SlowConv: public CCC {
 		SegsRate min_c_lambda;
 		SegsRate prev_consistent_min_c_lambda;
 
-		// SegsRate min_c_lambda_since_last_timeout;
-		// This is not needed since the fresh_min_c_lambda is actually
-		// recomputed over the entire recorded history.
+		SegsRate min_c_lambda_since_last_timeout;
+		// This is actually needed as loss may happen, and then
+		// fresh_min_c_lambda would not be as if it is recomputed over the
+		// entire recorded history.
+		// // This is not needed since the fresh_min_c_lambda is actually
+		// // recomputed over the entire recorded history.
 
 		Time last_minc_maxc_timeout_time;
 		SegsRate min_c;
@@ -137,6 +140,7 @@ class SlowConv: public CCC {
 			  last_minc_lambda_timeout_time(0),
 			  min_c_lambda(INIT_MIN_C),
 			  prev_consistent_min_c_lambda(INIT_MIN_C),
+			  min_c_lambda_since_last_timeout(INIT_MIN_C),
 
 			  last_minc_maxc_timeout_time(0),
 			  min_c(INIT_MIN_C),
