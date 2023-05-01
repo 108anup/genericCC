@@ -199,6 +199,8 @@ class SlowConv: public CCC {
 	std::string logfilepath;
 	std::ofstream logfile;
 
+	bool oddeven;
+
 	Time current_timestamp() { return cur_tick; }
 	SegsRate get_min_sending_rate();
 	void update_beliefs_minc_maxc(Time, const SegmentData & __attribute((unused)));
@@ -245,7 +247,8 @@ class SlowConv: public CCC {
 		  sending_rate(INIT_MIN_C),
 		  cwnd(MIN_CWND),
 		  logfilepath(logfilepath),
-		  logfile()
+		  logfile(),
+		  oddeven(false)
 	{
 		if (!logfilepath.empty()) {
 			std::cout << "Logging at " << logfilepath << "\n";

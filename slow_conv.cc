@@ -558,6 +558,12 @@ void SlowConv::update_rate_cwnd_slow_conv(Time now __attribute((unused))) {
 	sending_rate = std::max(sending_rate, min_sending_rate);
 	cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
 
+	// if(oddeven)
+	// 	sending_rate = 8000;  // Debug hardcoded rate.
+	// else
+	// 	sending_rate = min_sending_rate;
+	// oddeven = !oddeven;
+
 	_intersend_time = MS_TO_SECS / sending_rate;
 	_the_window = cwnd;
 }
