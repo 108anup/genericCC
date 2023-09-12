@@ -11,7 +11,7 @@ class SlowConvManual : public SlowConv {
 	enum SlowState { DRAIN, PROBE };
 
 	SlowState slow_state = DRAIN;
-	int probe_counter = 0;
+	uint32_t probe_counter = 0;
 	/**
 	 * probe_counter 0 means that we need to drain. If bw is short, then we
 	 * can send the first probe.

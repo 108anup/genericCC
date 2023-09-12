@@ -108,7 +108,8 @@ int main( int argc, char *argv[] ) {
 				}
 				else {
 					cctype = CCType::SLOW_CONV_MANUAL;
-					slow_conv_manual_inter_history = stoi(cctype_str, 10)
+					string num = cctype_str.substr(10);
+					slow_conv_manual_inter_history = stoi(num);
 				}
 			}
 			else if (cctype_str == "fast_conv")

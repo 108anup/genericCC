@@ -180,8 +180,8 @@ class SlowConv: public CCC {
 	static constexpr double TIMEOUT_THRESH = 1.5;
 	static constexpr int INTER_RATE_UPDATE_TIME = 1;  // Multiple of min_rtt
 
-	const int MEASUREMENT_INTERVAL_RTPROP;  // Multiple of min_rtt
-	const int MEASUREMENT_INTERVAL_HISTORY;	 // Multiple of history
+	const uint32_t MEASUREMENT_INTERVAL_RTPROP;  // Multiple of min_rtt
+	const uint32_t MEASUREMENT_INTERVAL_HISTORY;	 // Multiple of history
 
 	std::string LOG_TYPE_TO_STR[3];
 
@@ -238,8 +238,11 @@ class SlowConv: public CCC {
 	SeqNumDelta count_loss(SeqNum seq);
 
    public:
-	SlowConv(std::string logfilepath = "", const int MEASUREMENT_INTERVAL_RTPROP_ = 1)
-		:
+	SlowConv(std::string logfilepath = "",
+			 const int MEASUREMENT_INTERVAL_RTPROP_ = 1)
+		: MEASUREMENT_INTERVAL_RTPROP(MEASUREMENT_INTERVAL_RTPROP_),
+		  MEASUREMENT_INTERVAL_HISTORY(MEASUREMENT_INTERVAL_RTPROP /
+									   INTER_HISTORY_TIME),
 		  LOG_TYPE_TO_STR({"ERROR", "INFO", "DEBUG"}),
 		  cur_tick(0),
 		  genericcc_min_rtt(0),
@@ -262,10 +265,7 @@ class SlowConv: public CCC {
 		  cwnd(MIN_CWND),
 		  logfilepath(logfilepath),
 		  logfile(),
-		  oddeven(false),
-		  MEASUREMENT_INTERVAL_RTPROP(MEASUREMENT_INTERVAL_RTPROP_),
-		  MEASUREMENT_INTERVAL_HISTORY(MEASUREMENT_INTERVAL_RTPROP / INTER_HISTORY_TIME)
-	{
+		  oddeven(false) {
 		if (!logfilepath.empty()) {
 			std::cout << "Logging at " << logfilepath << "\n";
 			logfile.open(logfilepath);
