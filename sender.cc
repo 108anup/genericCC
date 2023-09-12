@@ -9,6 +9,7 @@
 #include "traffic-generator.hh"
 #include "slow_conv.hh"
 #include "fast_conv.hh"
+#include "slow_conv_manual.hh"
 
 // see configs.hh for details
 double TRAINING_LINK_RATE = 4000000.0/1500.0;
@@ -31,7 +32,8 @@ int main( int argc, char *argv[] ) {
 	// length of packet train for estimating bottleneck bandwidth
 	int train_length = 1;
 
-	enum CCType { REMYCC, TCPCC, KERNELCC, PCC, NASHCC, MARKOVIANCC, SLOW_CONV, FAST_CONV} cctype = REMYCC;
+	enum CCType { REMYCC, TCPCC, KERNELCC, PCC, NASHCC, MARKOVIANCC, SLOW_CONV, FAST_CONV, SLOW_CONV_MANUAL} cctype = REMYCC;
+	int slow_conv_manual_inter_history = 1;
 
 	for ( int i = 1; i < argc; i++ ) {
 		std::string arg( argv[ i ] );
@@ -100,8 +102,15 @@ int main( int argc, char *argv[] ) {
 				cctype = CCType::NASHCC;
 			else if (cctype_str == "markovian")
 				cctype = CCType::MARKOVIANCC;
-			else if (cctype_str == "slow_conv")
-				cctype = CCType::SLOW_CONV;
+			else if (cctype_str.rfind("slow_conv", 0) == 0) {
+				if(cctype_str == "slow_conv") {
+					cctype = CCType::SLOW_CONV;
+				}
+				else {
+					cctype = CCType::SLOW_CONV_MANUAL;
+					slow_conv_manual_inter_history = stoi(cctype_str, 10)
+				}
+			}
 			else if (cctype_str == "fast_conv")
 				cctype = CCType::FAST_CONV;
 			else
@@ -169,6 +178,15 @@ int main( int argc, char *argv[] ) {
 		CTCP< SlowConv > connection( congctrl, serverip, serverport, sourceport, train_length );
 		TrafficGenerator< CTCP< SlowConv > > traffic_generator( connection, onduration, offduration, traffic_params );
 		traffic_generator.spawn_senders( 1 );
+	}
+	else if (cctype == CCType::SLOW_CONV_MANUAL) {
+		fprintf(stdout, "Using SlowConvManual.\n");
+		SlowConvManual congctrl(logfilepath, slow_conv_manual_inter_history);
+		CTCP<SlowConvManual> connection(congctrl, serverip, serverport,
+										sourceport, train_length);
+		TrafficGenerator<CTCP<SlowConvManual>> traffic_generator(
+			connection, onduration, offduration, traffic_params);
+		traffic_generator.spawn_senders(1);
 	}
 	else if (cctype == CCType::FAST_CONV) {
 		fprintf(stdout, "Using FastConv.\n");

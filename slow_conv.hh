@@ -173,15 +173,16 @@ class SlowConv: public CCC {
 	static constexpr SegsRate INIT_MAX_C = 1e5;		  // ~1.2 Gbps
 	static constexpr TimeDelta TIME_DELTA_MAX = 1e5;  // 1e2 seconds
 	static constexpr TimeDelta MS_TO_SECS = 1e3;
-	static constexpr double INTER_HISTORY_TIME = 1;		 // Multiple of min_rtt
-	static constexpr double BELIEFS_TIMEOUT_PERIOD = 12;	 // Multiple of min_rtt
-	static constexpr double JITTER_MULTIPLIER = 1;		 // Multiple of min_rtt
-	static constexpr int MEASUREMENT_INTERVAL_RTPROP = 1;	 // Multiple of min_rtt
-	static constexpr int MEASUREMENT_INTERVAL_HISTORY =
-		MEASUREMENT_INTERVAL_RTPROP / INTER_HISTORY_TIME;	// Multiple of history
+	static constexpr double INTER_HISTORY_TIME = 1;		  // Multiple of min_rtt
+	static constexpr double BELIEFS_TIMEOUT_PERIOD = 12;  // Multiple of min_rtt
+	static constexpr double JITTER_MULTIPLIER = 1;		  // Multiple of min_rtt
 	static constexpr double BELIEFS_CHANGED_SIGNIFICANTLY_THRESH = 1.1;
 	static constexpr double TIMEOUT_THRESH = 1.5;
-	static constexpr int INTER_RATE_UPDATE_TIME = 1; // Multiple of min_rtt
+	static constexpr int INTER_RATE_UPDATE_TIME = 1;  // Multiple of min_rtt
+
+	const int MEASUREMENT_INTERVAL_RTPROP;  // Multiple of min_rtt
+	const int MEASUREMENT_INTERVAL_HISTORY;	 // Multiple of history
+
 	std::string LOG_TYPE_TO_STR[3];
 
    protected:
@@ -227,7 +228,7 @@ class SlowConv: public CCC {
 	void update_send_history_on_ack(Time __attribute((unused)), const SegmentData &);
 	void update_rate_cwnd(Time);
 	void update_rate_cwnd_fast_conv(Time __attribute((unused)));
-	void update_rate_cwnd_slow_conv(Time __attribute((unused)));
+	virtual void update_rate_cwnd_slow_conv(Time __attribute((unused)));
 	virtual void update_state(Time __attribute((unused)), const SegmentData &);
 	void log(LogLevel, std::string);
 	void log_state(Time);
@@ -237,7 +238,7 @@ class SlowConv: public CCC {
 	SeqNumDelta count_loss(SeqNum seq);
 
    public:
-	SlowConv(std::string logfilepath = "")
+	SlowConv(std::string logfilepath = "", const int MEASUREMENT_INTERVAL_RTPROP_ = 1)
 		:
 		  LOG_TYPE_TO_STR({"ERROR", "INFO", "DEBUG"}),
 		  cur_tick(0),
@@ -261,7 +262,9 @@ class SlowConv: public CCC {
 		  cwnd(MIN_CWND),
 		  logfilepath(logfilepath),
 		  logfile(),
-		  oddeven(false)
+		  oddeven(false),
+		  MEASUREMENT_INTERVAL_RTPROP(MEASUREMENT_INTERVAL_RTPROP_),
+		  MEASUREMENT_INTERVAL_HISTORY(MEASUREMENT_INTERVAL_RTPROP / INTER_HISTORY_TIME)
 	{
 		if (!logfilepath.empty()) {
 			std::cout << "Logging at " << logfilepath << "\n";
