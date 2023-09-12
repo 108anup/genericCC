@@ -623,7 +623,7 @@ void SlowConv::update_rate_cwnd_slow_conv(Time now __attribute((unused))) {
 		sending_rate = min_sending_rate;
 	} else {
 		sending_rate =
-			(1 + JITTER_MULTIPLIER) * beliefs.min_c_lambda + min_sending_rate;
+			(MEASUREMENT_INTERVAL_RATE_UPDATE + JITTER_MULTIPLIER) * beliefs.min_c_lambda + min_sending_rate;
 	}
 	sending_rate = std::max(sending_rate, min_sending_rate);
 	cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;

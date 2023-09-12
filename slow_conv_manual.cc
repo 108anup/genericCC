@@ -7,8 +7,8 @@ void SlowConvManual::update_rate_cwnd_slow_conv(Time now
 
 	SegsRate min_sending_rate = get_min_sending_rate();
 	SegsRate probe_rate =
-		((1 + JITTER_MULTIPLIER) * beliefs.min_c_lambda + min_sending_rate) /
-		MEASUREMENT_INTERVAL_HISTORY;
+		((MEASUREMENT_INTERVAL_RATE_UPDATE + JITTER_MULTIPLIER) * (beliefs.min_c_lambda + min_sending_rate)) /
+		MEASUREMENT_INTERVAL_RATE_UPDATE;
 
 	if (slow_state == SlowState::DRAIN) {
 		if (beliefs.bq_belief1 > 2 * MIN_CWND) {
@@ -24,7 +24,7 @@ void SlowConvManual::update_rate_cwnd_slow_conv(Time now
 		probe_counter += 1;
 	}
 
-	if (probe_counter == MEASUREMENT_INTERVAL_HISTORY) {
+	if (probe_counter == MEASUREMENT_INTERVAL_RATE_UPDATE) {
 		slow_state = SlowState::DRAIN;
 		probe_counter = 0;
 	}

@@ -182,6 +182,7 @@ class SlowConv: public CCC {
 
 	const uint32_t MEASUREMENT_INTERVAL_RTPROP;  // Multiple of min_rtt
 	const uint32_t MEASUREMENT_INTERVAL_HISTORY;	 // Multiple of history
+	const uint32_t MEASUREMENT_INTERVAL_RATE_UPDATE;	 // Multiple of rate update time
 
 	std::string LOG_TYPE_TO_STR[3];
 
@@ -243,6 +244,8 @@ class SlowConv: public CCC {
 		: MEASUREMENT_INTERVAL_RTPROP(MEASUREMENT_INTERVAL_RTPROP_),
 		  MEASUREMENT_INTERVAL_HISTORY(MEASUREMENT_INTERVAL_RTPROP /
 									   INTER_HISTORY_TIME),
+		  MEASUREMENT_INTERVAL_RATE_UPDATE(MEASUREMENT_INTERVAL_RTPROP /
+										   INTER_RATE_UPDATE_TIME),
 		  LOG_TYPE_TO_STR({"ERROR", "INFO", "DEBUG"}),
 		  cur_tick(0),
 		  genericcc_min_rtt(0),
@@ -270,6 +273,8 @@ class SlowConv: public CCC {
 			std::cout << "Logging at " << logfilepath << "\n";
 			logfile.open(logfilepath);
 		}
+		// This is the only tested configuration.
+		assert(INTER_RATE_UPDATE_TIME == INTER_HISTORY_TIME);
 	}
 
 	~SlowConv() {
