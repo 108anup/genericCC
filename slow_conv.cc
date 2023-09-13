@@ -335,7 +335,7 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 	this_underutilized = this_low_delay && !this_loss;
 	cum_underutilized = this_underutilized;
 	large_loss_happened |=
-		latest.interval_segs_lost > 2 * MIN_CWND;
+		latest.interval_segs_lost > 3 * MIN_CWND;
 	max_segs_lost_in_1rtprop = std::max(max_segs_lost_in_1rtprop, latest.interval_segs_lost);
 
 	// SeqNum delivered_1rtt_ago = seg.cum_delivered_segs_at_send;
@@ -361,7 +361,7 @@ void SlowConv::update_beliefs_minc_lambda(Time now __attribute((unused)), const 
 		this_underutilized = this_low_delay && !this_loss;
 		cum_underutilized = cum_underutilized && this_underutilized;
 		large_loss_happened |=
-			st.interval_segs_lost > 2 * MIN_CWND;
+			st.interval_segs_lost > 3 * MIN_CWND;  // 3 = 2 (bq bound) + 1 (excess rate)
 		max_segs_lost_in_1rtprop = std::max(max_segs_lost_in_1rtprop, st.interval_segs_lost);
 
 		if (depth < MEASUREMENT_INTERVAL_HISTORY) continue;
