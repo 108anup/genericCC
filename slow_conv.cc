@@ -476,11 +476,21 @@ void SlowConv::update_bq_beliefs_on_ack_and_sent(Time now) {
 	TimeDelta time_since_last_update = now - beliefs.last_bq_update_time;
 	beliefs.last_bq_update_time = now;
 	SeqNumDelta estimated_delivered =
-		beliefs.min_c_lambda * time_since_last_update;
+		(beliefs.min_c_lambda * time_since_last_update) / MS_TO_SECS;
+	// ^^ time is in ms while rate is in segs/s.
 	beliefs.bq_belief2 =
 		beliefs.bq_belief2 + estimated_sent - estimated_delivered;
 	beliefs.bq_belief2 = std::max((SeqNumDelta)0, beliefs.bq_belief2);
 	beliefs.bq_belief2 = std::min(beliefs.bq_belief2, beliefs.bq_belief1);
+
+	// std::stringstream ss;
+	// ss << "time " << now;
+	// ss << " min_c_lambda " << beliefs.min_c_lambda << " bq_belief1 "
+	//    << beliefs.bq_belief1 << " bq_belief2 " << beliefs.bq_belief2;
+	// ss << " estimated_sent " << estimated_sent << " estimated_delivered "
+	//    << estimated_delivered << " time_since_last_update "
+	//    << time_since_last_update;
+	// log(LogLevel::INFO, ss.str());
 }
 
 void SlowConv::update_beliefs_on_ack(Time now, const SegmentData &seg, bool updated_history,
