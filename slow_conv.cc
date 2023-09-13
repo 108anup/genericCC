@@ -629,8 +629,8 @@ void SlowConv::update_rate_cwnd_slow_conv(Time now __attribute((unused))) {
 	TimeDelta jitter = beliefs.min_rtt * JITTER_MULTIPLIER;
 
 	SegsRate min_sending_rate = get_min_sending_rate();
-	if(beliefs.bq_belief1 > 2 * MIN_CWND) {
-		sending_rate = min_sending_rate;
+	if(beliefs.bq_belief2 > 2 * MIN_CWND) {
+		sending_rate = beliefs.min_c_lambda - (beliefs.bq_belief2 * MS_TO_SECS) / beliefs.min_rtt;
 	} else {
 		sending_rate =
 			(MEASUREMENT_INTERVAL_RATE_UPDATE + JITTER_MULTIPLIER) * beliefs.min_c_lambda + min_sending_rate;

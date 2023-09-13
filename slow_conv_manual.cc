@@ -11,8 +11,8 @@ void SlowConvManual::update_rate_cwnd_slow_conv(Time now
 		MEASUREMENT_INTERVAL_RATE_UPDATE;
 
 	if (slow_state == SlowState::DRAIN) {
-		if (beliefs.bq_belief1 > 2 * MIN_CWND) {
-			sending_rate = min_sending_rate;
+		if (beliefs.bq_belief2 > 2 * MIN_CWND) {
+			sending_rate = beliefs.min_c_lambda - (beliefs.bq_belief2 * MS_TO_SECS) / beliefs.min_rtt;
 		} else {
 			slow_state = SlowState::PROBE;
 			probe_counter = 0;
