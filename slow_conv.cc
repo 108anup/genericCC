@@ -1,5 +1,6 @@
 #include "slow_conv.hh"
 #include <sstream>
+#include <chrono>
 
 SeqNumDelta SlowConv::count_loss(SeqNum seq) {
 	SeqNumDelta segs_lost = 0;
@@ -674,7 +675,9 @@ void SlowConv::update_rate_cwnd_fast_conv(Time now __attribute((unused))) {
 	if(beliefs.min_qdel > 0) {
 		sending_rate = beliefs.min_c / 2;
 	} else {
-		sending_rate = (1 + JITTER_MULTIPLIER) * beliefs.min_c;
+		// Trying with adding an additive increment component in hope of
+		// fairness
+		sending_rate = (1 + JITTER_MULTIPLIER) * beliefs.min_c + min_sending_rate;
 	}
 	sending_rate = std::max(sending_rate, min_sending_rate);
 	cwnd = (2 * beliefs.max_c * (rtprop + jitter)) / MS_TO_SECS;
@@ -710,7 +713,14 @@ void SlowConv::log_beliefs(Time now) {
 	ss << " min_c_lambda " << beliefs.min_c_lambda << " bq_belief1 "
 	   << beliefs.bq_belief1 << " bq_belief2 " << beliefs.bq_belief2;
 	ss << " unacknowledged_segs " << unacknowledged_segs.size();
-	ss << " prev_consistent_min_c_lambda " << beliefs.prev_consistent_min_c_lambda;
+	ss << " prev_consistent_min_c_lambda "
+	   << beliefs.prev_consistent_min_c_lambda;
+	std::chrono::high_resolution_clock::time_point wall_time =
+		std::chrono::high_resolution_clock::now();
+	ss << " wall_time "
+	   << std::chrono::duration_cast<std::chrono::milliseconds>(
+			  wall_time.time_since_epoch())
+			  .count();
 	log(LogLevel::INFO, ss.str());
 }
 
