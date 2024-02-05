@@ -599,19 +599,20 @@ void SlowConv::update_rate_cwnd(Time now) {
 
 		// Done here as we want to synchronize this with rate_cwnd update.
 		update_bq_beliefs_on_ack_and_sent(now);
+		update_rate_cwnd_slow_conv(now);
 
-		if(state == State::SLOW_START) {
-			update_rate_cwnd_fast_conv(now);
-		}
-		else if (state == State::CONG_AVOID) {
-			update_rate_cwnd_slow_conv(now);
-		}
-		else {
-			std::cerr << "State not implemented: " << state << std::endl;
-			log(LogLevel::ERROR,
-				"State not implemented: " + std::to_string(state));
-			// assert(false);
-		}
+		// if(state == State::SLOW_START) {
+		// 	update_rate_cwnd_fast_conv(now);
+		// }
+		// else if (state == State::CONG_AVOID) {
+		// 	update_rate_cwnd_slow_conv(now);
+		// }
+		// else {
+		// 	std::cerr << "State not implemented: " << state << std::endl;
+		// 	log(LogLevel::ERROR,
+		// 		"State not implemented: " + std::to_string(state));
+		// 	// assert(false);
+		// }
 
 		prev_measured_sending_rate =
 			(cum_segs_sent - sent_at_last_rate_update) * MS_TO_SECS /
