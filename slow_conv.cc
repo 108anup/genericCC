@@ -687,6 +687,11 @@ void SlowConv::update_rate_cwnd_fast_conv(Time now __attribute((unused))) {
 }
 
 void SlowConv::log(LogLevel l, std::string msg) {
+	// Don't show DEBUG logs
+	// Ideally should have used a logging library here...
+	if (l > LogLevel::INFO) {
+		return;
+	}
 	if (logfile.is_open()) {
 		// std::cout << "Logging";
 		logfile << LOG_TYPE_TO_STR[l] << " " << msg << std::endl;
