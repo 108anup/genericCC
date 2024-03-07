@@ -246,7 +246,7 @@ class SlowConv: public CCC {
 									   INTER_HISTORY_TIME),
 		  MEASUREMENT_INTERVAL_RATE_UPDATE(MEASUREMENT_INTERVAL_RTPROP /
 										   INTER_RATE_UPDATE_TIME),
-		  LOG_TYPE_TO_STR({"ERROR", "INFO", "DEBUG"}),
+		  LOG_TYPE_TO_STR {"ERROR", "INFO", "DEBUG"},
 		  cur_tick(0),
 		  genericcc_min_rtt(0),
 		  genericcc_rate_measurement(0),
