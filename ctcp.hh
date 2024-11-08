@@ -403,6 +403,11 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
   int seq_num = 0;
   _largest_ack = -1;
 
+  // Get min_rtt from outside
+  const char* min_rtt_c = getenv("MIN_RTT");
+  if (min_rtt_c != 0)
+    congctrl.set_min_rtt(atof(min_rtt_c));
+
   tcp_handshake();
 
   chrono::high_resolution_clock::time_point start_time_point = chrono::high_resolution_clock::now();
