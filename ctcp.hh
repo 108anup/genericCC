@@ -15,17 +15,20 @@
 
 using namespace std;
 
+// We set packet sizes to emulate TCP header overheads. This involves two
+// things: (1) ensuring the bytes of application payload accounted to have been
+// sent per packet is same as TCP, and (2) the bytes sent over the wire is same
+// as TCP.
 #define data_eth_mss 1500
 #define ack_eth_mss 52
-// We do bookkeeping in a way that we assume that we are sending with TCP
-// header overheads typical payload of TCP. We bookkeep that each packet
-// transmits mss = 1448 bytes worth of payload
+// We bookkeep that each packet transmits mss = 1448 bytes worth of payload
 #define tcp_mss 1448
 // TCP sends 1448 + 32 (TCP header) + 20 (IP header) = 1500 bytes over
-// ethernet. To match it, here we send 1472 bytes over UDP or 1472 + 8 (UDP header) + 20 (IP
-// header) = 1500 over ethernet
+// ethernet. To match it, we send 1472 bytes over UDP or 1472 + 8 (UDP
+// header) + 20 (IP header) = 1500 over ethernet
 #define packet_size 1472
-// actual payload of genericCC
+// actual payload of genericCC, but in logging, we bookkeep as if we only sent
+// 1448 bytes of payload
 #define data_size (packet_size-sizeof(TCPHeader))
 
 template <class T>
@@ -247,6 +250,11 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
 
       if (seq_num % train_length == 0) {
         if (LINK_LOGGING) {
+          // The format of the log is a csv with following columns:
+          // ["time_epoch", "flags", "srcport", "rtt", "length", "seq", "ack"]
+          // These fields are interpreted as if these were TCP packets and
+          // fields were parsed by tshark over a tcpdump. This for example
+          // allows us to compare directly with parsed tcpdump of iperf flows.
           double cur_time_secs = epoch_timestamp();
           int frame_len_bytes = data_eth_mss;
           int seq_num_first_byte = tcp_seq_num_bytes;

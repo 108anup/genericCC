@@ -74,7 +74,7 @@ int main( int argc, char *argv[] ) {
 		else if( arg.substr( 0, 8 ) == "linklog=" ) {
 			LINK_LOGGING_FILENAME = arg.substr( 8 );
 			LINK_LOGGING = true;
-      fprintf( stdout, "Link logging to %s\n", LINK_LOGGING_FILENAME.c_str() );
+			fprintf( stdout, "Link logging to %s\n", LINK_LOGGING_FILENAME.c_str() );
 		}
 		else if( arg.substr( 0, 15 ) == "traffic_params=")
 			traffic_params = arg.substr( 15 );
