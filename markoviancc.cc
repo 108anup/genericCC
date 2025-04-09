@@ -186,6 +186,8 @@ void MarkovianCC::update_intersend_time() {
     }
     update_amt = max(update_amt, 1.);
     ++ pkts_per_rtt;
+    if (const_velocity)
+      update_amt = 1;
 
     if (_the_window < target_window) {
       ++ update_dir;
@@ -319,6 +321,11 @@ void MarkovianCC::interpret_config_str(string config) {
   //	 -- bounded_delay - params:- delay bound (s)
   //	 -- bounded_delay_end - params:- delay bound (s), done in an end-to-end manner
 
+  if (config.substr(0, 15) == "const_velocity:") {
+    const_velocity = true;
+    config = config.substr(15, string::npos);
+    cout << "Will use constant velocity" << endl;
+  }
   if (config.substr(0, 6) == "do_ss:") {
     do_slow_start = true;
     config = config.substr(6, string::npos);
