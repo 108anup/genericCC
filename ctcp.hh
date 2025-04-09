@@ -15,7 +15,17 @@
 
 using namespace std;
 
-#define packet_size 1440
+#define data_eth_mss 1500
+#define ack_eth_mss 52
+// We do bookkeeping in a way that we assume that we are sending with TCP
+// header overheads typical payload of TCP. We bookkeep that each packet
+// transmits mss = 1448 bytes worth of payload
+#define tcp_mss 1448
+// TCP sends 1448 + 32 (TCP header) + 20 (IP header) = 1500 bytes over
+// ethernet. To match it, here we send 1472 bytes over UDP or 1472 + 8 (UDP header) + 20 (IP
+// header) = 1500 over ethernet
+#define packet_size 1472
+// actual payload of genericCC
 #define data_size (packet_size-sizeof(TCPHeader))
 
 template <class T>
@@ -103,6 +113,12 @@ double current_timestamp( chrono::high_resolution_clock::time_point &start_time_
   return duration_cast<duration<double>>(cur_time_point - start_time_point).count()*1000;
 }
 
+double epoch_timestamp( void ) {
+  using namespace chrono;
+  high_resolution_clock::time_point cur_time_point = high_resolution_clock::now();
+  return duration_cast<duration<double>>(cur_time_point.time_since_epoch()).count();
+}
+
 template<class T>
 void CTCP<T>::tcp_handshake() {
   TCPHeader header, ack_header;
@@ -169,6 +185,9 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
   if( LINK_LOGGING )
     link_logfile.open( LINK_LOGGING_FILENAME, ios::out | ios::app );
 
+  int tcp_seq_num_bytes = 0;
+  int tcp_ack_num_bytes = 0;
+
   // for flow control
   int seq_num = 0;
   _largest_ack = -1;
@@ -227,6 +246,16 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
       _last_send_time += congctrl.get_intersend_time();
 
       if (seq_num % train_length == 0) {
+        if (LINK_LOGGING) {
+          double cur_time_secs = epoch_timestamp();
+          int frame_len_bytes = data_eth_mss;
+          int seq_num_first_byte = tcp_seq_num_bytes;
+          link_logfile << std::fixed << std::setprecision(9) << cur_time_secs
+                      << "," << "0x0018," << srcport << "," << ","
+                      << frame_len_bytes << "," << seq_num_first_byte << "," << 1
+                      << endl;
+        }
+        tcp_seq_num_bytes += tcp_mss;
         congctrl.set_timestamp(cur_time);
         congctrl.onPktSent( header.seq_num / train_length );
       }
@@ -288,6 +317,17 @@ void CTCP<T>::send_data( double flow_size, bool byte_switched, int flow_id, int 
     this->tot_packets_transmitted += 1;
 
     if ((ack_header.seq_num - 1) % train_length == 0) {
+      if (LINK_LOGGING) {
+        double cur_time_secs = epoch_timestamp();
+        double rtt_secs = (cur_time - ack_header.sender_timestamp) / 1000.0;
+        int frame_len_bytes = ack_eth_mss;
+        tcp_ack_num_bytes += data_eth_mss;
+        int next_expected_seq = tcp_ack_num_bytes + 1;
+        link_logfile << std::fixed << std::setprecision(9) << cur_time_secs
+                     << "," << "0x0012," << dstport << "," << rtt_secs << ","
+                     << frame_len_bytes << "," << 1 << "," << next_expected_seq
+                     << endl;
+      }
       congctrl.set_timestamp(cur_time);
       congctrl.onACK(ack_header.seq_num / train_length,
                      ack_header.receiver_timestamp,
